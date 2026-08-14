@@ -3,18 +3,26 @@ SHELL := /bin/bash
 APP := tacita
 BIN_DIR := bin
 TOOLS_DIR := .go/bin
+UV_TOOLS_DIR := .go/uv-tools
+RUMDL_CACHE_DIR := .go/rumdl-cache
 COVERAGE_FILE := coverage.out
 MIN_COVERAGE ?= 80
 
+GOFUMPT_VERSION ?= v0.11.0
+GITLEAKS_VERSION ?= v8.30.1
 GOLANGCI_LINT_VERSION ?= v2.6.0
 GOVULNCHECK_VERSION ?= v1.1.4
+RUMDL_VERSION ?= 0.2.55
+GOFUMPT := $(TOOLS_DIR)/gofumpt
+GITLEAKS := $(TOOLS_DIR)/gitleaks
 GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
 GOVULNCHECK := $(TOOLS_DIR)/govulncheck
+RUMDL := $(TOOLS_DIR)/rumdl
 
 LINT_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD 2>/dev/null)
 
-.PHONY: all help tools fmt fmt-check vet lint lint-new test test-race coverage build check quality-gate security clean
-.NOTPARALLEL: check quality-gate
+.PHONY: all help tools fmt fmt-check markdown-check vet lint lint-new test test-race coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run clean
+.NOTPARALLEL: check quality-gate pre-commit-run
 
 all: check ## Run the incremental local validation gate
 
@@ -23,7 +31,15 @@ help: ## Show available targets
 		LC_ALL=C sort -t ':' -k1,1 | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-tools: $(GOLANGCI_LINT) $(GOVULNCHECK) ## Install pinned development tools locally
+tools: $(GOFUMPT) $(GITLEAKS) $(GOLANGCI_LINT) $(GOVULNCHECK) $(RUMDL) ## Install pinned development tools locally
+
+$(GOFUMPT):
+	@mkdir -p "$(TOOLS_DIR)"
+	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
+
+$(GITLEAKS):
+	@mkdir -p "$(TOOLS_DIR)"
+	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
 
 $(GOLANGCI_LINT):
 	@mkdir -p "$(TOOLS_DIR)"
@@ -33,16 +49,28 @@ $(GOVULNCHECK):
 	@mkdir -p "$(TOOLS_DIR)"
 	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
-fmt: ## Format Go source in place
-	gofmt -s -w .
+$(RUMDL):
+	@command -v uv >/dev/null || { echo "uv is required to install rumdl" >&2; exit 1; }
+	@mkdir -p "$(TOOLS_DIR)" "$(UV_TOOLS_DIR)"
+	UV_TOOL_DIR="$(CURDIR)/$(UV_TOOLS_DIR)" \
+		UV_TOOL_BIN_DIR="$(CURDIR)/$(TOOLS_DIR)" \
+		uv tool install --force "rumdl==$(RUMDL_VERSION)"
 
-fmt-check: ## Fail when Go source is not formatted
-	@files="$$(gofmt -s -l .)"; \
+fmt: $(GOFUMPT) $(RUMDL) ## Format Go source and Markdown in place
+	"$(GOFUMPT)" -w .
+	"$(RUMDL)" fmt .
+
+fmt-check: $(GOFUMPT) $(RUMDL) ## Fail when Go source or Markdown is not formatted
+	@files="$$("$(GOFUMPT)" -l .)"; \
 	if [[ -n "$$files" ]]; then \
-		echo "The following files need gofmt:"; \
+		echo "The following files need gofumpt:"; \
 		echo "$$files"; \
 		exit 1; \
 	fi
+	"$(RUMDL)" fmt --check .
+
+markdown-check: $(RUMDL) ## Lint Markdown
+	"$(RUMDL)" check .
 
 vet: ## Run the standard Go analyzer
 	go vet ./...
@@ -81,13 +109,24 @@ build: ## Build a reproducible local binary
 	@mkdir -p "$(BIN_DIR)"
 	CGO_ENABLED=0 go build -trimpath -o "$(BIN_DIR)/$(APP)" ./cmd/$(APP)
 
-check: fmt-check vet lint-new test ## Run fast incremental checks
+check: fmt-check markdown-check vet lint-new test ## Run fast incremental checks
 
-quality-gate: fmt-check vet lint test-race coverage build security ## Run all pre-publication checks
+quality-gate: fmt-check markdown-check vet lint test-race coverage build security ## Run all pre-publication checks
 
-security: $(GOVULNCHECK) ## Check dependencies and reachable code for known vulnerabilities
+security: $(GOVULNCHECK) gitleaks ## Check for known vulnerabilities and hardcoded secrets
 	"$(GOVULNCHECK)" ./...
 
+gitleaks: $(GITLEAKS) ## Scan repository files for hardcoded secrets
+	"$(GITLEAKS)" dir --no-banner --redact .
+
+pre-commit-install: tools ## Install the repository Git pre-commit hook
+	@command -v pre-commit >/dev/null || { echo "pre-commit is required to install hooks" >&2; exit 1; }
+	pre-commit install
+
+pre-commit-run: tools gitleaks ## Run the complete repository pre-commit suite
+	@command -v pre-commit >/dev/null || { echo "pre-commit is required to run hooks" >&2; exit 1; }
+	pre-commit run --all-files
+
 clean: ## Remove generated local artifacts
-	rm -rf -- "$(BIN_DIR)" "$(TOOLS_DIR)"
+	rm -rf -- "$(BIN_DIR)" "$(TOOLS_DIR)" "$(UV_TOOLS_DIR)" "$(RUMDL_CACHE_DIR)"
 	rm -f -- "$(COVERAGE_FILE)"

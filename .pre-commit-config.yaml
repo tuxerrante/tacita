@@ -1,0 +1,47 @@
+minimum_pre_commit_version: "4.0.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt
+        entry: .go/bin/gofumpt -w
+        language: system
+        types: [go]
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: go mod tidy -diff
+        language: system
+        files: '(^|/)(go\.mod|go\.sum|.*\.go)$'
+        pass_filenames: false
+      - id: gitleaks
+        name: gitleaks
+        entry: .go/bin/gitleaks git --pre-commit --redact --staged --verbose
+        language: system
+        pass_filenames: false
+      - id: rumdl-fmt
+        name: rumdl fmt
+        entry: .go/bin/rumdl fmt
+        language: system
+        types: [markdown]
+        require_serial: true
+      - id: rumdl
+        name: rumdl check
+        entry: .go/bin/rumdl check
+        language: system
+        types: [markdown]
+        require_serial: true

@@ -2,10 +2,7 @@ version: "2"
 
 formatters:
   enable:
-    - gofmt
-  settings:
-    gofmt:
-      simplify: true
+    - gofumpt
 
 linters:
   default: none
@@ -13,6 +10,7 @@ linters:
     - errcheck
     - errorlint
     - gocritic
+    - goconst
     - gosec
     - govet
     - ineffassign

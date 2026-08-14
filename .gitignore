@@ -1,0 +1,21 @@
+# Local coaching notes.
+/COPILOT_IMPLEMENTATION_GUIDE.md
+
+# Go build, test, and tool outputs.
+/bin/
+/.go/
+/coverage.out
+*.test
+*.prof
+
+# Local workspaces and environment.
+go.work
+go.work.sum
+.env
+.env.*
+!.env.example
+
+# Editors and operating systems.
+/.idea/
+/.vscode/
+.DS_Store

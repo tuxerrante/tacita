@@ -16,13 +16,6 @@ edit. It turns tacit project knowledge into explicit, reviewable policy.
 **Tacita** comes from the Latin root for silent or unspoken. It reflects the
 product's purpose: make tacit repository rules explicit.
 
-Working tagline:
-
-> Make tacit repository rules explicit.
-
-The previous working name, AWG (Agentic Workflow Guardrails), described an
-abandoned product direction and is retained only in local history.
-
 ## Problem
 
 Linters and tests handle universal rules well. They rarely encode local
@@ -142,5 +135,5 @@ than lower thresholds.
 Tacita is in specification and learning-bootstrap stage. There is no usable
 analysis, proposal, ratification, or enforcement implementation yet.
 
-`IMPLEMENTATION_PLAN.md` defines the experiment, security model, package
-boundaries, quality gates, and milestones.
+The repository root [`IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)
+identifies the active milestone and unresolved decisions.

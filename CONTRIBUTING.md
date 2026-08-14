@@ -4,16 +4,22 @@ Tacita is experimental. Discuss changes that alter the product claim, report
 schema, Git semantics, security boundary, or statistical protocol before
 implementation.
 
+Start with the task-oriented documentation map in
+[`docs/README.md`](docs/README.md).
+
 ## Development setup
 
 Requirements:
 
 - Go 1.26;
 - Git;
-- GNU Make.
+- GNU Make;
+- `uv`;
+- `pre-commit` 4.x for the Git hooks.
 
 ```bash
 make tools
+make pre-commit-install
 make check
 ```
 
@@ -25,6 +31,7 @@ Use the smallest relevant target while iterating:
 
 ```bash
 make fmt
+make markdown-check
 make test
 make lint-new
 make check
@@ -56,6 +63,18 @@ make quality-gate
 Committed documentation, architecture notes, code comments, and user-facing
 text are written in English. Personal coaching notes must remain in ignored
 local files.
+
+Use the ownership table in [`docs/README.md`](docs/README.md) before changing a
+decision. Update the owning document, then replace repeated detail elsewhere
+with a link instead of maintaining parallel summaries. `make fmt` formats both
+Go and Markdown; `make markdown-check` applies the Markdown rules.
+
+The installed pre-commit hook also checks common file errors, module tidiness,
+and staged secrets with Gitleaks. Run the full hook set with:
+
+```bash
+make pre-commit-run
+```
 
 ## Commits
 

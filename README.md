@@ -16,11 +16,23 @@ Tacita is in specification and learning-bootstrap stage. The current binary is
 only a testable CLI shell; it does not analyze Git history or enforce policy.
 There are no releases yet.
 
-See:
+## Start here
 
-- [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md) for the product boundary;
-- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the preregistered
-  experiment, security model, and milestones.
+Read only what matches the task:
+
+1. [`docs/product.md`](docs/product.md) — what Tacita is, who it serves, and
+   what it deliberately does not do.
+2. [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — current milestone,
+   blocked decisions, and implementation order.
+3. [`docs/experiment.md`](docs/experiment.md) — hypotheses, evaluation protocol,
+   metrics, and stop conditions.
+4. [`docs/architecture.md`](docs/architecture.md) — CLI, Git boundary, package
+   responsibilities, security, and testing contracts.
+
+[`docs/README.md`](docs/README.md) is the complete documentation map.
+Contributors should also read [`CONTRIBUTING.md`](CONTRIBUTING.md). Coding
+agents start with [`AGENTS.md`](AGENTS.md), which points to the minimum context
+needed for each kind of change.
 
 ## Development
 
@@ -28,7 +40,8 @@ Requirements:
 
 - Go 1.26;
 - Git;
-- GNU Make.
+- GNU Make;
+- `uv`.
 
 ```bash
 make help
@@ -37,25 +50,16 @@ make quality-gate
 ```
 
 `make check` runs the fast incremental developer gate. `make quality-gate`
-runs the full lint, race, coverage, build, security, and formatting checks.
-Pinned external development tools are installed under `.go/bin`; they do not
-become runtime module dependencies.
+runs the full lint, race, coverage, build, vulnerability/secret scanning,
+Go/Markdown formatting, and Markdown lint checks. Pinned external development
+tools are installed under `.go/bin`; they do not become runtime module
+dependencies.
 
 Run the current shell:
 
 ```bash
 go run ./cmd/tacita backtest --revision HEAD .
 ```
-
-## Design principles
-
-- Offline and provider-neutral core.
-- Read-only Git access with explicit revisions.
-- Standard library first.
-- Deterministic reports and explicit resource budgets.
-- Human ratification before enforcement.
-- Precision over recall; abstention is valid.
-- Sequential implementation until profiling justifies concurrency.
 
 ## Contributing
 

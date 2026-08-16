@@ -190,8 +190,7 @@ Reports identify the resolved commit, first-parent range, included timestamp
 range, explicit `as_of` time, Git/Tacita versions, parameters, and shallow
 status.
 
-Shallow history is rejected unless a separately approved research mode marks
-the report incomplete.
+Shallow history is rejected in the first experiment.
 
 Normalization must:
 
@@ -235,7 +234,8 @@ does not infer generated status from names or contents.
 
 ## Resource limits
 
-The first experiment uses these hard limits per repository run:
+The first experiment uses these hard limits per repository run. A calibration
+run evaluates all 81 configurations in one process and one analytical report:
 
 | Resource | Limit | Exhaustion behavior |
 | --- | ---: | --- |

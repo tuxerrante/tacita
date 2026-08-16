@@ -56,7 +56,7 @@ Top-level fields appear in this order:
 | `status` | string | `complete`, `failed`, or `inconclusive` |
 | `tool` | object | Tacita, Git, and optional Go helper versions |
 | `repository` | object | Object format, root, resolved tip, first-parent counts |
-| `configuration` | object | Parameters and optional development-lock digest |
+| `configurations` | array | Ordered parameter sets and optional lock digest |
 | `budgets` | array | Sorted deterministic limits and observed work counts |
 | `partitions` | array | `60`, `70`, `80`, `90` cutoff and window records |
 | `exclusions` | array | Reason/count pairs sorted by reason |
@@ -64,7 +64,7 @@ Top-level fields appear in this order:
 | `baselines` | array | Frequent, unweighted, shuffled, and no-history records |
 | `controls` | array | Young/template control outcomes |
 | `profiles` | array | Tier/rule applicability and provenance |
-| `metrics` | object | Repository micro, macro, coverage, stability, diagnostics |
+| `metrics` | array | Per-configuration repository metrics and diagnostics |
 | `gates` | array | Deterministic dimensions sorted by gate ID |
 | `limitations` | array | Sorted stable limitation codes |
 | `failure` | object or null | Typed failure code, bounded detail, and limit data |
@@ -82,10 +82,11 @@ no profile helper ran.
 `reachable_commits`, `first_parent_events`, `single_parent_events`, and
 `merge_result_events`, in that order.
 
-`configuration` fields are `configuration_id`, `development_lock_digest`,
-`size_weight`, `minimum_opportunities`, `minimum_confidence`, and
-`minimum_lift`, in that order. Profile-only reports use `null` for inferred
-configuration fields.
+Each `configurations` record contains `configuration_id`,
+`development_lock_digest`, `size_weight`, `minimum_opportunities`,
+`minimum_confidence`, and `minimum_lift`, in that order. Calibration reports
+contain all 81 records in configuration-ID order; selected backtests contain
+one; profile-only reports contain an empty array.
 
 Each budget record contains `id`, `unit`, `limit`, `observed`, and `outcome`.
 Runtime and memory budget records contain limits but set canonical `observed`
@@ -101,12 +102,12 @@ counts. Indices are one-based.
 
 ### Candidate records
 
-Candidates are ordered by partition, rank, then candidate ID. A final
-full-history proposal uses partition `100`.
+Candidates are ordered by configuration ID, partition, rank, then candidate ID.
+A final full-history proposal uses partition `100`.
 
 Each inferred candidate contains:
 
-1. `id`, `origin`, `partition`, and `rank`;
+1. `id`, `origin`, `configuration_id`, `partition`, and `rank`;
 2. antecedent and consequent byte identities;
 3. raw opportunity and support integers;
 4. weighted exposure, support, confidence, prevalence, and lift decimal
@@ -124,16 +125,21 @@ retain every path mapped to the candidate's antecedent or consequent plus at
 most 20 other paths selected by path-byte order. Report total pre-sampling
 event and path counts beside the bounded evidence.
 
+Calibration and control reports set candidate evidence arrays empty while
+retaining total evidence counts. Full evidence is generated only for the
+selected configuration's development diagnostics and holdout backtest.
+
 Profile records use the same ID and provenance fields defined in
 [`profiles.md`](profiles.md), plus applicability, compliance evidence, and
 optional non-applicability reason.
 
 ### Metrics and gates
 
-The repository metric object fields are `micro_adherence`, `macro_adherence`,
-`coverage`, `cutoff_abstention`, `minimum_jaccard`, and
-`rank_correlation_diagnostics`, in that order. Baseline and control records
-contain `id`, the same applicable metric fields, and outcome.
+Each repository metric record contains `configuration_id`,
+`micro_adherence`, `macro_adherence`, `coverage`, `cutoff_abstention`,
+`minimum_jaccard`, and `rank_correlation_diagnostics`, in that order. Baseline
+and control records contain `configuration_id`, `id`, the same applicable
+metric fields, and outcome.
 
 A metric is:
 
@@ -147,8 +153,9 @@ or:
 {"value":null,"reason":"no_opportunities"}
 ```
 
-Gate records contain `id`, `outcome`, `metric`, `operator`, `threshold`, and
-`reason`, in that order. Outcomes are `pass`, `fail`, or `inconclusive`.
+Gate records contain `configuration_id`, `id`, `outcome`, `metric`, `operator`,
+`threshold`, and `reason`, in that order. Profile-wide gates use `null`
+configuration ID. Outcomes are `pass`, `fail`, or `inconclusive`.
 
 Stable undefined-metric reasons are:
 
@@ -256,11 +263,13 @@ SHA-256 over the preceding canonical fields.
 
 ## `tacita.review-result/v1`
 
-The review result contains schema, manifest digest, reviewer relationship,
-ordered candidate and deviation labels, evidence references inspected,
-optional rationale, monotonic elapsed decision durations, and result digest.
-The result digest is SHA-256 over the preceding canonical fields. The result
-never modifies the immutable analytical report or review manifest.
+The review result contains schema, status (`complete` or `invalid`), manifest
+digest, reviewer relationship, ordered candidate and deviation labels, evidence
+references inspected, optional rationale, monotonic elapsed decision durations,
+optional invalidation reason, and result digest. The frozen invalidation reason
+is `external_interruption`. The result digest is SHA-256 over the preceding
+canonical fields. The result never modifies the immutable analytical report or
+review manifest.
 
 ## `tacita.evidence/v1`
 
@@ -279,7 +288,7 @@ The evidence-index digest is SHA-256 over the preceding canonical fields.
 The index is canonical for a recorded run, but two executions may have
 different sidecar digests and therefore different evidence-index bytes. The
 byte-identity engineering gate applies to analytical reports generated with
-identical resolved inputs, configuration, and tool versions.
+identical resolved inputs, configurations, and tool versions.
 
 ## `tacita.operation/v1`
 

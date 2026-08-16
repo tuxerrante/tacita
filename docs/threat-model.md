@@ -19,9 +19,9 @@ path bytes, history shape, repository-local configuration, profile input blobs,
 configuration files, and decoded report files.
 
 Trusted dependencies for the first experiment are the Tacita binary, Linux
-kernel and filesystem, Git 2.43 or newer, the optional Go 1.26 profile helper,
-the pinned profile source revisions, and the external measurement harness.
-Compromise of those dependencies is outside scope.
+kernel and filesystem, Git 2.43 or newer, the frozen optional Go 1.26.5 profile
+helper, the pinned profile source revisions, and the external measurement
+harness. Compromise of those dependencies is outside scope.
 
 ## Threats and controls
 

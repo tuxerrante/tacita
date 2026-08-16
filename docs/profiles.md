@@ -65,6 +65,9 @@ are invalid Go. `semantic-import-version` accepts the documented `gopkg.in`
 `.vN` form and otherwise checks `/vN`; release-tag compatibility remains
 outside the initial offline diff contract.
 
+A replacement is local when the parsed replacement has an empty version; no
+path-prefix heuristic is used.
+
 ## `spf13-idiomatic`
 
 Provenance:

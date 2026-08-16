@@ -291,8 +291,9 @@ selector.
 
 After implementation, calibration:
 
-1. evaluates every frozen configuration on `golang/tools` and Kubernetes using
-   the same temporal partitions, baselines, controls, and budgets;
+1. produces one calibration report per development repository, evaluating all
+   81 frozen configurations with the same temporal partitions, baselines,
+   controls, and budgets;
 2. verifies the no-history and Proficiency negative controls and records the
    `go-starter` template-origin control;
 3. selects one configuration using only the frozen rule;
@@ -392,12 +393,12 @@ by single NUL bytes, with no trailing NUL:
 ```text
 inferred candidate =
   tacita-product-review-v1, repository object ID, inferred-candidate,
-  inferred, antecedent, consequent
+  inferred, antecedent bytes_b64url, consequent bytes_b64url
 
 deviation =
   tacita-product-review-v1, repository object ID, deviation,
-  inferred, antecedent, consequent, training-cutoff object ID,
-  violating-commit object ID
+  inferred, antecedent bytes_b64url, consequent bytes_b64url,
+  training-cutoff object ID, violating-commit object ID
 
 profile candidate =
   tacita-product-review-v1, repository object ID, profile-candidate,
@@ -471,8 +472,9 @@ the Proficiency profile proposals and presents applicable rules in hash order.
 
 The lane passes adoption with at least three useful ratifications no later than
 10 minutes after the clock starts. Fewer than three eligible proposals is a
-failure, not abstention. An external interruption is recorded as an invalid,
-non-passing run and may not be restarted after candidate content has been seen.
+failure, not abstention. An external interruption produces an `invalid` review
+result and an `inconclusive` non-passing lane. The run may not be restarted
+after candidate content has been seen.
 
 The inferred product lane passes only if candidate precision, deviation
 precision, adoption timing, and preregistered rediscovery all pass. The profile

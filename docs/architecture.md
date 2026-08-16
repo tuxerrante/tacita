@@ -112,10 +112,9 @@ The first experiment supports:
 - bare repositories and worktrees available through a local filesystem path.
 
 Other operating systems, architectures, older Git versions, SHA-256
-repositories, alternates that require network access, and promisor objects
-missing from local storage are unsupported. Detect these conditions before
-history traversal and return a typed unsupported-environment or
-incomplete-repository error.
+repositories, object alternates, and promisor repositories are unsupported.
+Detect these conditions before history traversal and return a typed
+unsupported-environment or incomplete-repository error.
 
 The frozen reference environment uses Git 2.55.0 and Go 1.26.5. Calibration,
 holdout, and repeated determinism runs use the exact same Git version, Tacita
@@ -135,6 +134,19 @@ repository ownership or safety checks is reported; Tacita never modifies
 Reject repositories with a non-empty legacy `info/grafts` file. Replacement
 refs remain disabled rather than interpreted. Reject object alternates,
 promisor remotes, and missing local objects.
+
+Override relevant repository-local configuration with `-c` arguments:
+`core.abbrev=40`, `core.fsmonitor=false`, `core.hooksPath=/dev/null`, and
+`diff.external=`. Explicit command flags remain authoritative for root,
+external-diff, text-conversion, merge-diff, and rename behavior.
+
+Preflight uses `rev-parse --is-shallow-repository` and
+`rev-parse --path-format=absolute --git-common-dir`. Inspect graft and alternate
+files relative to the common directory, not a linked worktree's private Git
+directory. Read local `extensions.partialClone` and `remote.*.promisor`
+configuration only to reject the repository. Any missing-object failure during
+traversal is `incomplete_repository`; the bounded run does not perform a full
+`git fsck`.
 
 Build the Git child environment from an allowlist. Clear inherited repository,
 object-store, index, worktree, tracing, prompt, and attribute-source variables,
@@ -171,11 +183,14 @@ separate integration event and reports this merge-policy sensitivity as a
 limitation. It must not infer review boundaries from commit messages or call a
 forge API.
 
+Merge commits can have the opposite sensitivity: unrelated concerns combined
+in one merge become one large transaction. Squash integration tends to match
+the desired one-review-unit-per-transaction model, while rebase, fast-forward,
+and broad merge commits can respectively fragment or bundle review units.
+
 First-parent ancestry, not commit timestamps, defines event order and
 availability. At a cutoff commit, only that commit and its first-parent
-ancestors are available. Author and committer timestamps remain report evidence
-but cannot reorder events, so clock skew cannot place a child before its
-parent.
+ancestors are available. Clock skew cannot reorder events.
 
 An **eligible integration event** is a chain event that remains after all
 frozen path, size, history, and resource exclusions. Each eligible event
@@ -186,11 +201,43 @@ path or component limits are excluded with distinct reasons. Root exclusion
 prevents an initial repository snapshot or template import from fabricating
 co-change among every initial component.
 
-Reports identify the resolved commit, first-parent range, included timestamp
-range, explicit `as_of` time, Git/Tacita versions, parameters, and shallow
-status.
+Reports identify the resolved commit, first-parent root and event counts,
+Git/Tacita versions, and parameters.
 
 Shallow history is rejected in the first experiment.
+
+### Frozen Git data flow
+
+Use two bounded Git commands with the frozen environment and `-c` overrides:
+
+```text
+git -C <repository> rev-list \
+  --first-parent --reverse --parents <resolved-object-id>
+
+git -C <repository> diff-tree \
+  --stdin --always -r --raw -z --abbrev=40 \
+  --no-renames --no-textconv --no-ext-diff \
+  --diff-merges=first-parent
+```
+
+The first command is line-oriented only because every field is a validated
+full hexadecimal object ID. It defines event order, first parent, and event
+kind. Tacita feeds only its first object-ID field from each line to the second
+command's stdin.
+
+The second command emits one `<commit-object-id>\0` boundary for every input,
+including empty events. Each following raw record is:
+
+```text
+:<source-mode> <destination-mode> <source-oid> <destination-oid> <status>\0
+<path>\0
+```
+
+Modes are six octal bytes; object IDs are 40 lowercase hexadecimal bytes.
+Accepted status bytes are `A`, `D`, `M`, and `T`. `R` or `C` violates the
+no-rename invariant; every other status is malformed input. Mode `160000`
+identifies a gitlink. A commit boundary with no following raw record is an
+event with zero changed paths.
 
 Normalization must:
 
@@ -246,7 +293,6 @@ run evaluates all 81 configurations in one process and one analytical report:
 | Distinct component identities | 50,000 | fail |
 | Directional pair observations | 20,000,000 | fail |
 | Distinct directional pairs | 2,000,000 | fail |
-| Candidate-model configurations | 81 | fail |
 | Captured Git stdout | 1 GiB | fail |
 | Captured Git stderr per command | 1 MiB | fail |
 | Analysis elapsed time | 20 minutes | cancel and fail |
@@ -266,6 +312,12 @@ logical CPUs, 8 GiB RAM, a local complete clone, no network access, and
 sequential Tacita execution. Clone time is excluded. The external experiment
 harness records monotonic elapsed time and peak resident set size in the
 operational sidecar; those observations do not enter canonical report bytes.
+
+Tacita enforces elapsed time with context cancellation and emits
+`budget_elapsed` when it can report the breach. Peak resident memory is
+enforced by the external harness. A harness kill is recorded through sidecar
+exit status; canonical `failure.observed` remains `null` for elapsed or memory
+limits not observed by Tacita itself.
 
 ## Reports
 

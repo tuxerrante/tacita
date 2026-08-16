@@ -7,10 +7,10 @@ into explicit, human-ratified contracts. The checked-in executable is only a
 disposable `backtest` shell. It does not read Git history, mine candidates,
 evaluate profiles, ratify rules, or enforce policy.
 
-Milestone 0 is complete. Implement only the active milestone under the frozen
-experiment contracts. Do not change corpus IDs, thresholds, report fields,
-platform guarantees, resource budgets, or Git/component semantics from
-development or holdout results.
+Milestone 0 is complete, amended, and re-frozen. Implement only the active
+milestone under the frozen experiment contracts. Do not change corpus IDs,
+thresholds, report fields, platform guarantees, resource budgets, or
+Git/component semantics from development or holdout results.
 
 ## Load context by task
 

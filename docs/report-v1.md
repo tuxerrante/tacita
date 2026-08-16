@@ -45,6 +45,17 @@ tacita-candidate-v1, origin, antecedent bytes_b64url, consequent bytes_b64url
 
 Profile candidate IDs replace antecedent and consequent with tier and rule ID.
 
+Worked vector:
+
+```text
+antecedent bytes: config
+antecedent bytes_b64url: Y29uZmln
+consequent bytes: charts/kapparmor
+consequent bytes_b64url: Y2hhcnRzL2thcHBhcm1vcg
+candidate ID:
+dd2fbb9a369995a25ef008e95a8b6027ebc4b72f44acd0689d933600f1150dbb
+```
+
 ## `tacita.report/v1`
 
 Top-level fields appear in this order:
@@ -64,6 +75,7 @@ Top-level fields appear in this order:
 | `baselines` | array | Frequent, unweighted, shuffled, and no-history records |
 | `controls` | array | Young/template control outcomes |
 | `profiles` | array | Tier/rule applicability and provenance |
+| `preregistered_checks` | array | Positive-control metrics and eligibility |
 | `metrics` | array | Per-configuration repository metrics and diagnostics |
 | `gates` | array | Deterministic dimensions sorted by gate ID |
 | `limitations` | array | Sorted stable limitation codes |
@@ -133,13 +145,21 @@ Profile records use the same ID and provenance fields defined in
 [`profiles.md`](profiles.md), plus applicability, compliance evidence, and
 optional non-applicability reason.
 
+Each preregistered check contains `id`, antecedent and consequent byte
+identities, raw opportunity, raw support, weighted confidence, weighted lift,
+`eligible`, and `excluded_by`, in that order. `excluded_by` lists every
+selected-configuration threshold that rejected the pair. The check is reported
+even when the pair is not an eligible or displayed candidate.
+
 ### Metrics and gates
 
 Each repository metric record contains `configuration_id`,
 `micro_adherence`, `macro_adherence`, `coverage`, `cutoff_abstention`,
 `minimum_jaccard`, and `rank_correlation_diagnostics`, in that order. Baseline
 and control records contain `configuration_id`, `id`, the same applicable
-metric fields, and outcome.
+metric fields, and diagnostic outcome. Baseline and control outcomes do not
+enter the conjunctive engineering gate unless a frozen requirement names that
+specific baseline or control.
 
 A metric is:
 
@@ -163,6 +183,8 @@ Stable undefined-metric reasons are:
 no_eligible_evaluation_events
 no_opportunities
 no_candidates
+below_inference_floor
+identical_baseline
 empty_candidate_sets
 insufficient_rank_overlap
 profile_not_applicable
@@ -215,15 +237,27 @@ generated_status_not_inferred
 sha1_only
 linux_amd64_only
 profile_policy_opinion
+human_inspected_holdout
+single_reviewer
+single_configuration_holdout
+small_review_sample
+self_attested_freeze
+timing_label_coupling
+evidence_metadata_confidential
 ```
 
 `failure` fields are `code`, `operation`, `observed`, `limit`, and
 `diagnostic_digest`. Raw Git stderr and local paths are operational diagnostics,
 not canonical failure detail.
 
+For `budget_elapsed` and `budget_memory`, canonical `observed` is `null` unless
+Tacita's own accounting observed the limit before external termination.
+
 For the 100,000-row budget, one row is one partition, exclusion, candidate,
-candidate-evidence item, baseline, control, profile, metric diagnostic, gate,
-limitation, or failure record. Top-level scalar objects do not add rows.
+candidate-evidence event, baseline, control, profile, preregistered check,
+metric diagnostic, gate, limitation, or failure record. Path records retained
+inside one candidate-evidence event do not add rows. Top-level scalar objects
+do not add rows.
 
 ## `tacita.grid/v1`
 
@@ -292,14 +326,18 @@ identical resolved inputs, configurations, and tool versions.
 
 ## `tacita.operation/v1`
 
-The operational sidecar is not canonical experiment evidence. It contains:
+The operational sidecar is not deterministic experiment evidence. It is
+serialized with the canonical JSON rules above and contains these fields in
+order:
 
-- canonical report digest;
-- monotonic elapsed duration;
-- peak resident memory;
-- process exit status;
-- reference-runner description;
-- local diagnostic paths when needed.
+1. `schema`: `tacita.operation/v1`;
+2. `report_digest`;
+3. `elapsed_duration_ns`;
+4. `peak_resident_bytes`;
+5. `process_exit_status`;
+6. `reference_runner`;
+7. `diagnostic_paths`, which is `null` when absent;
+8. `sidecar_digest`, SHA-256 over the preceding canonical fields.
 
 The sidecar is size-bounded, must never contain source blobs or unredacted Git
 stderr, and never rewrites canonical report bytes. It records the runtime and

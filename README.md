@@ -12,10 +12,10 @@ edit.
 
 ## Status
 
-Milestone 0 is complete: the first experiment contract is frozen. Milestone 1
-safe Git ingestion is next. The current binary remains only a testable CLI
-shell; it does not analyze Git history or enforce policy. There are no releases
-yet.
+Milestone 0 is complete: the first experiment contract is amended and
+re-frozen. Milestone 1 safe Git ingestion is next. The current binary remains
+only a testable CLI shell; it does not analyze Git history or enforce policy.
+There are no releases yet.
 
 ## Start here
 

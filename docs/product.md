@@ -38,8 +38,10 @@ Tacita reduces that bootstrap cost:
 4. store only accepted rules as repository-owned contracts;
 5. evaluate explicit diffs locally or in any CI.
 
-The adoption target is at least three useful ratifications within ten minutes
-on an eligible repository.
+The initial adoption target is at least three useful ratifications within ten
+minutes on an eligible repository when reviewed by a maintainer with direct
+decision history. It is a pilot workflow measure, not an estimate of agreement
+among maintainers.
 
 ## Candidate origins
 

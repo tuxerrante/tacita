@@ -4,6 +4,22 @@ This document defines the evidence required before Tacita becomes an
 enforcement product. The first experiment's corpus, calibration, gates,
 controls, and stop rules are frozen below.
 
+## Freeze record
+
+The initial protocol was frozen on 2026-08-16 before Tacita produced candidate,
+metric, rank, or label output for Kapparmor.
+
+Additional adversarial reviews on the same date inspected public Kapparmor
+documentation and history. The amendments below correct executable semantics,
+artifact contracts, and non-passing outcome classification; they do not change
+the corpus, configuration grid, numeric thresholds, selector keys, or product
+label gates. Kapparmor is therefore a **configuration holdout** whose outputs
+cannot influence selection, not a repository uninspected by humans. Reports
+carry `human_inspected_holdout`, `self_attested_freeze`, and
+`evidence_metadata_confidential`; adoption reports additionally carry
+`single_reviewer`, `single_configuration_holdout`, `small_review_sample`, and
+`timing_label_coupling`.
+
 ## Hypotheses
 
 ### Repository-inferred candidates
@@ -266,8 +282,10 @@ aggregation for:
    training-transaction prevalence other than `A`; break prevalence ties by
    component bytes. This preserves the model's antecedent opportunities while
    ignoring association with `A`.
-2. **Unweighted co-change:** rerun the complete candidate pipeline with the
-   selected configuration's thresholds but force `unit` size weight.
+2. **Unweighted co-change:** for each evaluated configuration, rerun the
+   complete candidate pipeline with that configuration's thresholds but force
+   `unit` size weight. For a `unit` configuration the baseline is identical,
+   the comparison is omitted, and the metric reason is `identical_baseline`.
 3. **Hash-shuffled control:** sort integration events by ascending SHA-256 of
    `tacita-shuffle-v1`, the frozen repository object ID, and the event object
    ID, encoded as UTF-8 fields joined by single NUL bytes with no trailing NUL;
@@ -303,9 +321,9 @@ After implementation, calibration:
 
 A configuration remains selectable only if every frozen development
 engineering dimension and required negative control passes on both development
-repositories. Holdout-only candidate-count and predictive requirements are not
-calibration inputs. Among selectable configurations, compare these keys in
-order:
+repositories. Configuration-holdout candidate-count and predictive
+requirements are not calibration inputs. Among selectable configurations,
+compare these keys in order:
 
 1. greatest worst-case adherence gain over frequent consequent, taking the
    minimum across micro and macro metrics and both development repositories;
@@ -313,7 +331,8 @@ order:
 3. greatest minimum adjacent-cutoff Jaccard across both repositories;
 4. simplest size weight in the order `unit`, `inverse-component`,
    `pair-normalized`;
-5. ascending canonical configuration ID.
+5. lowest numeric minimum-opportunity, confidence, and lift tuple;
+6. ascending canonical configuration ID.
 
 The canonical configuration ID is:
 
@@ -329,17 +348,18 @@ paths.
 
 Calibration must not read or report Kapparmor candidates, ranks, metrics, or
 labels. After the configuration lock is written, filters, weights, thresholds,
-ranking, budgets, and report semantics cannot change before holdout evaluation.
+ranking, budgets, and report semantics cannot change before configuration
+holdout evaluation.
 
 If no grid configuration passes the frozen development requirements, the lane
-fails without inspecting the holdout. Changing the grid or selector requires a
-new preregistered experiment; the original run cannot call later evidence its
-untouched holdout.
+fails without running Tacita on the configuration holdout. Changing the grid or
+selector requires a new preregistered experiment; the original run cannot call
+later evidence its configuration holdout.
 
 ## Frozen product-relevance gate
 
-The following protocol and thresholds were frozen on 2026-08-16 before mining
-the Kapparmor holdout.
+The following protocol and thresholds were frozen on 2026-08-16 before Tacita
+mined the Kapparmor configuration holdout.
 
 ### Preregistered Kapparmor contract
 
@@ -361,6 +381,12 @@ evidence does not count. This check occurs only after the blinded labels are
 locked. The reverse direction and conditional application, integration-test,
 documentation, and changelog relationships are exploratory; they cannot
 satisfy the preregistered-rediscovery condition.
+
+The holdout analytical report records this pair's raw opportunity, raw support,
+weighted confidence, weighted lift, eligibility, and every rejecting
+configuration threshold even when the pair is not eligible or displayed. These
+diagnostics explain a failure but cannot change its outcome or the locked
+configuration.
 
 ### Frozen samples and blinding
 
@@ -450,6 +476,12 @@ The inferred precision gates are exact counts:
 - deviation precision passes with at least 6 `review-worthy` labels among the
   10 frozen deviations.
 
+These are pilot screening gates, not population precision estimates. Assuming
+independent labels with the same true positive rate in both samples, the joint
+pass probability is approximately `0.054` at `p=0.50`, `0.20` at `p=0.60`,
+`0.47` at `p=0.70`, and `0.77` at `p=0.80`. A pass or fail therefore does not
+estimate inter-maintainer agreement.
+
 ### Adoption timing
 
 Adoption timing is run separately for the Kapparmor inferred lane and the
@@ -463,6 +495,10 @@ ratification at `warn`. Candidate generation, applicability evaluation,
 rendering, evidence inspection, and decision entry all count. The clock cannot
 be paused. A useful inferred ratification must also be labelled `decision`; a
 useful profile ratification must be applicable and retain its `profile` origin.
+
+Timing and candidate labeling occur in the same session because the product
+task being measured is the decision itself. This coupling can encourage faster
+or more favorable labels and is a reported limitation.
 
 The timed inferred run is the reviewer's first exposure to Kapparmor candidate
 content. It presents the eight frozen candidate units in hash order, records
@@ -500,8 +536,13 @@ is inconclusive; it passes only when every required dimension passes.
 
 Examples of failure include missing a numeric threshold, exhausting a resource
 budget, emitting any inferred candidate on the negative control, or emitting no
-candidate on a positive lane that requires candidate evidence. Zero candidates
-is a pass only where the frozen negative-control contract requires zero.
+candidate after a positive lane reaches the 100-transaction inference floor.
+Zero candidates is a pass only where the frozen negative-control contract
+requires zero.
+
+A training partition below the inference floor is `inconclusive` with reason
+`below_inference_floor`; it is not evidence that the candidate hypothesis
+failed.
 
 An undefined denominator is never replaced by a success-shaped number. The
 metric is `null` with an explicit reason when, for example:
@@ -513,8 +554,9 @@ metric is `null` with an explicit reason when, for example:
 
 If one adjacent candidate set is empty and the other is not, Jaccard is the
 defined value `0`. If both are empty, Jaccard is undefined; the positive lane
-already fails for emitting no candidates. Exact reason identifiers belong to
-the report contract.
+either fails for emitting no candidates after reaching the inference floor or
+is inconclusive below the floor. Exact reason identifiers belong to the report
+contract.
 
 ## Frozen engineering gate
 
@@ -536,29 +578,35 @@ calibration or holdout inspection.
   candidates.
 - The `go-starter` root event never contributes evidence; later candidates are
   diagnostic and do not fail the control.
-- Each development and holdout cutoff displays between 1 and 10 inferred
-  candidates.
-- The final full-history Kapparmor proposal displays between 8 and 10 inferred
-  candidates so the frozen product sample can be formed.
+- Each development and configuration-holdout cutoff whose training partition
+  reaches 100 eligible transactions displays between 1 and 10 inferred
+  candidates. A cutoff below the floor is inconclusive.
 
 ### Coverage and predictive behavior
 
 - Pooled future-transaction coverage is at least 5% on each development
-  repository and the holdout.
+  repository and the configuration holdout.
 - Every evaluation partition contains at least one covered transaction.
 - On each development repository, both micro and macro adherence improve by at
   least 10 percentage points over frequent consequent and are not lower than
-  the unweighted co-change baseline.
-- On the holdout, both micro and macro adherence improve by at least 5
-  percentage points over frequent consequent and are not lower than the
-  unweighted co-change baseline.
-- On each development repository and the holdout, chronological micro and macro
-  adherence exceed the hash-shuffled control by at least 5 percentage points.
+  the unweighted co-change baseline when the evaluated weight is non-unit.
+- On the configuration holdout, both micro and macro adherence improve by at
+  least 5 percentage points over frequent consequent and are not lower than the
+  unweighted co-change baseline when the selected weight is non-unit.
+- On each development repository and the configuration holdout, chronological
+  micro and macro adherence exceed the hash-shuffled control by at least 5
+  percentage points.
+
+Development requires a larger gain because it is the selection surface; the
+single-shot configuration holdout tests transfer with a smaller positive
+minimum while still forbidding regression against unweighted co-change.
 
 ### Stability and cost
 
-- Every adjacent-cutoff top-10 Jaccard value is at least `0.50`; the first
-  experiment has no epoch-boundary exception.
+- For the selected chronological model on each development repository and the
+  configuration holdout, every adjacent-cutoff top-10 Jaccard value is at least
+  `0.50`. Baseline and control stability is diagnostic. The first experiment
+  has no epoch-boundary exception.
 - Kendall tau-b is reported when at least two candidates survive in both
   adjacent rankings but is diagnostic rather than gating.
 - Every repository run completes within all frozen resource limits.
@@ -569,7 +617,7 @@ regularity metrics.
 ## Frozen evaluation corpus
 
 The first experiment uses the following corpus, frozen on 2026-08-16 before
-candidate mining or holdout inspection:
+Tacita candidate mining or metric inspection:
 
 | Repository | Frozen commit | Roles |
 | --- | --- | --- |
@@ -577,14 +625,18 @@ candidate mining or holdout inspection:
 | [`kubernetes/kubernetes`](https://github.com/kubernetes/kubernetes) | `a231bf3f37761e8955eefba61855da1a526a3eb9` | Development, tuning, and scale/stress |
 | [`allaboutapps/go-starter`](https://github.com/allaboutapps/go-starter) | `9f7a54cca5cf7b68657e6d5242bab3fcef81ae2d` | Template-origin control |
 | [`tuxerrante/proficiency`](https://github.com/tuxerrante/proficiency) | `f0a8a795013de170318e6a6b879fdcd0e45cd50e` | Young-repository negative control and profile adoption timing |
-| [`tuxerrante/kapparmor`](https://github.com/tuxerrante/kapparmor) | `5f9694c42c06e63bb825536486bea93b36418c5d` | Untouched holdout and inferred-candidate adoption timing |
+| [`tuxerrante/kapparmor`](https://github.com/tuxerrante/kapparmor) | `5f9694c42c06e63bb825536486bea93b36418c5d` | Configuration holdout and inferred-candidate adoption timing |
 
 All five repositories are anonymously available over HTTPS at the frozen
 commits. The qualified reviewer for the adoption studies is `tuxerrante`, the
 owner and maintainer of both adoption repositories before the freeze date.
 Review is limited to areas where the reviewer has direct decision history.
+A passing review shows that this repository's own maintainer recognizes the
+sampled candidates; it is not evidence of agreement among maintainers in
+general.
 
-The selection deliberately separates tuning from holdout evaluation.
+The selection deliberately separates tuning from configuration-holdout
+evaluation.
 `golang/tools` provides a medium, mostly linear history; Kubernetes supplies a
 large merge-heavy history and the stress case; `go-starter` is explicitly
 marked as a GitHub template and tests root-event exclusion without requiring
@@ -646,7 +698,7 @@ Stop, revise, or split the product if:
 - useful adherence depends on negligible coverage or one repository;
 - small cutoff/filter changes destabilize the rules;
 - resource use exceeds the frozen budget;
-- the untouched holdout fails.
+- the configuration holdout fails.
 
 Thresholds must not be weakened after holdout results are known.
 
@@ -662,3 +714,11 @@ Go policy pack. The shared workflow is coherent only if maintainers experience
 both origins as inputs to the same ratification job and gain distinct value
 from each. Otherwise the correct result is to remove or split a lane, not hide
 the difference behind one manifest.
+
+The pilot also has weak external validity: one self-interested reviewer labels
+small samples on one configuration holdout, the 81-cell selector is calibrated
+on two development repositories, and the freeze is self-attested. Human review
+of public Kapparmor history has occurred even though no Tacita holdout output
+has been produced. A pass supports only this preregistered single-maintainer
+case study; it does not estimate population precision, inter-rater agreement,
+or transfer beyond similar repositories.

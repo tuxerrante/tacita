@@ -1,6 +1,6 @@
 # Tacita Implementation Plan
 
-Status: Milestone 0 experiment contract frozen
+Status: Milestone 0 experiment contract amended and re-frozen
 
 Active milestone: Milestone 1 — safe Git ingestion
 
@@ -32,8 +32,9 @@ Git history
   -> deterministic reports
 ```
 
-Ratification, manifests, and enforcement begin only after the experiment passes
-its frozen gates.
+Product ratification, product manifests, and enforcement begin only after the
+experiment passes its frozen gates. Experiment review manifests are evidence
+artifacts, not product policy.
 
 ## Current implementation
 
@@ -79,8 +80,11 @@ development or holdout results:
 | [Profiles](docs/profiles.md) | Frozen: parser, applicability, identifiers, rule semantics, and provenance |
 | [Threat model](docs/threat-model.md) | Frozen: assets, trust boundaries, controls, residual risks, and exclusions |
 
-The experiment may be revised only as a newly preregistered run. Results from
-Kapparmor cannot modify this table.
+The dated amendment record in
+[`docs/experiment.md`](docs/experiment.md#freeze-record) documents corrections
+made after human review of public history but before Tacita produced Kapparmor
+candidate or metric output. The experiment is re-frozen; later changes require
+a newly preregistered run. Kapparmor results cannot modify this table.
 
 ## Next implementation step
 
@@ -134,8 +138,8 @@ selected from the development corpus without holdout access.
 ### 3. Temporal backtest
 
 Deliver the frozen rolling cutoffs and configuration, trivial baselines,
-blinded human review, negative and stress controls, and the untouched holdout
-evidence bundle.
+blinded human review, negative and stress controls, and the configuration
+holdout evidence bundle.
 
 Exit: a complete go/no-go result without post-holdout threshold changes.
 

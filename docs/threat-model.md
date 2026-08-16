@@ -42,7 +42,7 @@ harness. Compromise of those dependencies is outside scope.
 | Local data disclosure | Report captures source or environment | Evidence uses paths, statuses, and object IDs; no source blobs in reports; bounded redacted stderr | Paths and commit metadata may themselves be sensitive |
 | Profile-helper network access | Go attempts toolchain or module download | `GOTOOLCHAIN=local`, `GOWORK=off`, `GOPROXY=off`, `GOSUMDB=off`; parse-only command | Compromised local Go tool |
 | Profile provenance confusion | Opinion presented as official Go behavior | Tier and rule provenance in every candidate; pinned source commit | Maintainer may still accept unsuitable guidance |
-| Holdout contamination | Calibration reads Kapparmor metrics | Configuration lock required before holdout report generation; report digests and corpus IDs recorded | A human can inspect the repository outside Tacita |
+| Holdout contamination | Calibration reads Kapparmor metrics | Configuration lock required before Tacita holdout reports; report digests and corpus IDs recorded | Humans have inspected public Kapparmor history; only configuration independence is claimed |
 | Report or lock substitution | Different config used for holdout | Canonical bytes and SHA-256 digests; resolved IDs embedded in reports | SHA-256 implementation compromise |
 
 ## Explicit exclusions

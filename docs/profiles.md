@@ -100,6 +100,10 @@ go.uber.org/mock
 Matching is exact or prefix followed by `/`; plain string-prefix matches do not
 count.
 
+The depth, directory-name, and module-prefix parameters are Tacita-authored
+operationalizations of the pinned source's broader guidance. They are not
+literal identifiers supplied by the upstream document.
+
 The earlier provisional `no-root-pkg` rule is removed: the pinned source
 explicitly recommends a single root package as the default for simple
 applications. Profile rules may be opinionated, but they must not invert their

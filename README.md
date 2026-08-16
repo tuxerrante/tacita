@@ -12,9 +12,10 @@ edit.
 
 ## Status
 
-Tacita is in specification and learning-bootstrap stage. The current binary is
-only a testable CLI shell; it does not analyze Git history or enforce policy.
-There are no releases yet.
+Milestone 0 is complete: the first experiment contract is frozen. Milestone 1
+safe Git ingestion is next. The current binary remains only a testable CLI
+shell; it does not analyze Git history or enforce policy. There are no releases
+yet.
 
 ## Start here
 
@@ -26,8 +27,8 @@ Read only what matches the task:
    blocked decisions, and implementation order.
 3. [`docs/experiment.md`](docs/experiment.md) — hypotheses, evaluation protocol,
    metrics, and stop conditions.
-4. [`docs/architecture.md`](docs/architecture.md) — CLI, Git boundary, package
-   responsibilities, security, and testing contracts.
+4. [`docs/architecture.md`](docs/architecture.md) — technical reference for
+   CLI, Git, packages, security, and tests; read the product brief first.
 
 [`docs/README.md`](docs/README.md) is the complete documentation map.
 Contributors should also read [`CONTRIBUTING.md`](CONTRIBUTING.md). Coding

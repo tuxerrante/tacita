@@ -7,9 +7,10 @@ into explicit, human-ratified contracts. The checked-in executable is only a
 disposable `backtest` shell. It does not read Git history, mine candidates,
 evaluate profiles, ratify rules, or enforce policy.
 
-Product implementation is blocked at Milestone 0. Do not invent corpus IDs,
-thresholds, report fields, platform guarantees, resource budgets, or unresolved
-Git/component semantics.
+Milestone 0 is complete. Implement only the active milestone under the frozen
+experiment contracts. Do not change corpus IDs, thresholds, report fields,
+platform guarantees, resource budgets, or Git/component semantics from
+development or holdout results.
 
 ## Load context by task
 
@@ -25,6 +26,9 @@ Then load only the relevant owned document:
   [`docs/experiment.md`](docs/experiment.md);
 - Go, CLI, Git, security, packages, errors, or tests:
   [`docs/architecture.md`](docs/architecture.md);
+- profile parsing or rules: [`docs/profiles.md`](docs/profiles.md);
+- report artifacts or encoding: [`docs/report-v1.md`](docs/report-v1.md);
+- threats, controls, or exclusions: [`docs/threat-model.md`](docs/threat-model.md);
 - repository workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 [`docs/README.md`](docs/README.md) explains document ownership. When a decision
@@ -69,6 +73,8 @@ go test ./cmd/tacita -run '^TestRun$' -count=1
 - Resolve revisions with `rev-parse --verify --end-of-options`, validate the
   full object ID, use NUL-delimited output, isolate ambient Git configuration,
   and cap all work and output.
+- Support the frozen Linux/amd64, Git 2.43+, SHA-1 boundary and model
+  first-parent integration events without rename inference.
 - Return typed/wrapped errors and print each error once at the CLI boundary.
 - Keep canonical reports deterministic and render JSON/text from one model.
 - Preserve the distinction between `inferred` and `profile` candidate origins.

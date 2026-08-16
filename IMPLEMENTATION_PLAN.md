@@ -1,10 +1,10 @@
 # Tacita Implementation Plan
 
-Status: specification and disposable CLI bootstrap
+Status: Milestone 0 experiment contract frozen
 
-Active milestone: Milestone 0 — freeze the experiment
+Active milestone: Milestone 1 — safe Git ingestion
 
-Product implementation: blocked on the decisions below
+Product implementation: limited to the frozen evidence-first experiment
 
 This file is the operational plan. It intentionally does not repeat the product
 definition, experimental protocol, or architecture:
@@ -57,28 +57,46 @@ Not implemented:
 The current CLI is disposable. Its shape may change when the first real command
 contract is frozen.
 
-## Blocking decisions
+## Frozen Milestone 0 decisions
 
-Milestone 1 must not invent these values while coding:
+Milestone 1 must implement these contracts without changing them from
+development or holdout results:
 
 | Decision | Required output |
 | --- | --- |
-| Evaluation corpus | Repository roles and immutable commit IDs |
-| Product gate | Blinded review protocol and numeric precision thresholds |
-| Engineering gate | Frozen adherence, coverage, stability, runtime, and memory thresholds |
-| Report contract | Versioned schema v1 and canonical ordering rules |
-| Git semantics | Supported platforms/Git version, history ordering, shallow-history and rename behavior |
-| Component projection | Root, deleted-only directories, nested modules, submodules, vendor, and symlink behavior |
-| Resource budgets | Commits, paths, components, pairs, bytes, time, and report rows |
-| Profiles | Exact parser semantics, applicability inputs, identifiers, and pinned provenance |
+| [Evaluation corpus](docs/experiment.md#frozen-evaluation-corpus) | Frozen: repository roles and immutable commit IDs |
+| [Product gate](docs/experiment.md#frozen-product-relevance-gate) | Frozen: blinded review protocol and numeric precision thresholds |
+| [Integration history](docs/architecture.md#integration-history) | Frozen: first-parent events, net merge diffs, and merge-policy limits |
+| [Temporal weighting](docs/experiment.md#descriptive-model) | Frozen: no temporal decay in the first experiment |
+| [Temporal backtest](docs/experiment.md#temporal-evaluation) | Frozen: expanding 60/70/80/90 percent cutoffs and non-overlapping 10% windows |
+| [Gate outcomes](docs/experiment.md#gate-outcome-semantics) | Frozen: conjunctive pass, fail, inconclusive, and undefined metrics |
+| [Candidate calibration](docs/experiment.md#candidate-configuration-grid) | Frozen: 81 configurations, selector, ranking, and development lock |
+| [Engineering gate](docs/experiment.md#frozen-engineering-gate) | Frozen: determinism, controls, adherence, coverage, stability, and cost |
+| [Report contract](docs/report-v1.md) | Frozen: report, development lock, review manifest, sidecar, encoding, and ordering |
+| [Git boundary](docs/architecture.md#supported-experiment-environment) | Frozen: Linux/amd64, Git 2.43+, SHA-1, complete local objects, and no rename inference |
+| [Component projection](docs/architecture.md#component-projection) | Frozen: lexical parent directories, root, modules, gitlinks, vendor, and symlinks |
+| [Resource budgets](docs/architecture.md#resource-limits) | Frozen: events, paths, components, pairs, configurations, bytes, time, memory, and rows |
+| [Profiles](docs/profiles.md) | Frozen: parser, applicability, identifiers, rule semantics, and provenance |
+| [Threat model](docs/threat-model.md) | Frozen: assets, trust boundaries, controls, residual risks, and exclusions |
 
-The provisional choices and their rationale are in
-[`docs/experiment.md`](docs/experiment.md). A decision is frozen only when this
-table can link to a concrete value or schema.
+The experiment may be revised only as a newly preregistered run. Results from
+Kapparmor cannot modify this table.
+
+## Next implementation step
+
+Begin Milestone 1 with the smallest independently testable Git boundary:
+
+1. implement supported-environment validation and full commit resolution;
+2. add the cancellation-aware bounded Git runner;
+3. parse first-parent integration events and exclusion diagnostics;
+4. validate against real temporary repositories before adding mining.
+
+Do not implement candidate aggregation, calibration, profiles, or holdout
+evaluation in Milestone 1.
 
 ## Milestones
 
-### 0. Freeze the experiment
+### 0. Freeze the experiment — complete 2026-08-16
 
 Deliver:
 
@@ -86,8 +104,8 @@ Deliver:
 - a threat model and explicit exclusions;
 - an experiment another implementer can reproduce without hidden choices.
 
-Exit: all inputs and acceptance criteria are fixed before holdout results are
-observed.
+Exit met: all inputs and acceptance criteria are fixed before holdout results
+are observed.
 
 ### 1. Safe Git ingestion
 
@@ -102,21 +120,22 @@ Deliver:
 Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
-The first learning exercise may implement `ResolveCommit` because its safety
-contract is already known, but it must not silently choose the unresolved
-history or budget semantics.
+The first learning exercise should implement `ResolveCommit` under the frozen
+environment, history, error, and budget contracts.
 
 ### 2. Descriptive miner
 
 Deliver component projection, directional pair aggregation, raw and weighted
-measures, stable ranking, tests, and benchmarks.
+measures, stable ranking, the frozen development grid, tests, and benchmarks.
 
-Exit: exact repeated results and bounded behavior on the development corpus.
+Exit: exact repeated results, bounded behavior, and a configuration lock
+selected from the development corpus without holdout access.
 
 ### 3. Temporal backtest
 
-Deliver rolling cutoffs, trivial baselines, blinded human review, negative and
-stress controls, and the untouched holdout evidence bundle.
+Deliver the frozen rolling cutoffs and configuration, trivial baselines,
+blinded human review, negative and stress controls, and the untouched holdout
+evidence bundle.
 
 Exit: a complete go/no-go result without post-holdout threshold changes.
 

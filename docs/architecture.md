@@ -1,7 +1,13 @@
 # Architecture
 
-This document defines technical invariants for the evidence-first experiment.
-It does not select product thresholds or approve enforcement.
+This is a technical reference for implementing Tacita safely. It assumes the
+product vocabulary and workflow from the [product brief](product.md). Read that
+first if `candidate`, `profile`, `ratification`, or `finding` is unfamiliar.
+
+The [experiment protocol](experiment.md) owns mining formulas, human-review
+labels, samples, and acceptance gates. This document owns CLI, Git, package,
+resource, report, security, and testing contracts. See the
+[documentation map](README.md) for task-specific reading paths.
 
 ## Principles
 
@@ -31,7 +37,9 @@ main -> realMain -> run -> runBacktest
 
 The `backtest` shell is scaffolding, not a stable public command contract.
 
-If the experiment succeeds, the intended provider-neutral product loop is:
+The [product brief](product.md#product-loop) owns the future workflow,
+ratification semantics, and enforcement policy. If the experiment succeeds,
+the provisional provider-neutral command shape is:
 
 ```text
 tacita propose [--profile <id> ...] --output tacita.proposed.yml <repository>
@@ -39,14 +47,11 @@ tacita ratify --proposals tacita.proposed.yml --manifest tacita.yml
 tacita check --base <revision> --head <revision> <repository>
 ```
 
-No candidate is enforceable before explicit ratification. New rules begin at
-`warn`; promotion to `block` is per rule and explicit.
-
-The proposals file is never enforced. Ratification presents one candidate at a
-time with `accept`, `reject`, and `defer`, and writes the manifest only after
-final confirmation. Updates are atomic, preserve unrelated manual rules, and
-reject identifier or concurrent-edit conflicts. Checking reads only the
-ratified manifest and evaluates only the explicit base/head diff.
+The command contract is not frozen. Its technical constraints are that
+proposal output is never enforceable, manifest updates are atomic, unrelated
+manual rules are preserved, identifier and concurrent-edit conflicts are
+rejected, and checking reads only the ratified manifest and explicit base/head
+diff.
 
 Provider-specific CI wrappers may present results later, but the core command
 does not infer CI environment variables, call forge APIs, or access the
@@ -87,8 +92,8 @@ The analyzed repository is untrusted input. Git invocation must:
 - validate the complete object ID and use only that ID in later history
   commands;
 - request NUL-delimited machine output;
-- cap stdout, stderr, elapsed time, commits, paths, components, pairs, and
-  report size;
+- cap stdout, stderr, elapsed time, integration events, paths, components,
+  pairs, and report size;
 - set deterministic locale/timezone and neutralize ambient Git configuration,
   paging, optional locks, external diff, and text conversion;
 - avoid hooks, filters, difftools, user-defined commands, repository mutation,
@@ -97,12 +102,93 @@ The analyzed repository is untrusted input. Git invocation must:
 
 A `--` path separator alone does not make an untrusted revision safe.
 
-## History ingestion
+## Supported experiment environment
 
-The initial experiment reads non-merge commits reachable from an explicitly
-resolved revision. Ordering uses committer timestamps plus object-ID
-tie-breaking. Reports identify the resolved commit, included timestamp range,
-explicit `as_of` time, Git/Tacita versions, parameters, and shallow status.
+The first experiment supports:
+
+- Linux on `amd64`;
+- Git 2.43 or newer;
+- repositories using Git's SHA-1 object format;
+- bare repositories and worktrees available through a local filesystem path.
+
+Other operating systems, architectures, older Git versions, SHA-256
+repositories, alternates that require network access, and promisor objects
+missing from local storage are unsupported. Detect these conditions before
+history traversal and return a typed unsupported-environment or
+incomplete-repository error.
+
+The frozen reference environment uses Git 2.55.0 and Go 1.26.5. Calibration,
+holdout, and repeated determinism runs use the exact same Git version, Tacita
+binary digest, and optional Go helper version recorded in the development lock.
+
+Resolve the object format with `rev-parse --show-object-format`. A resolved
+commit ID must be exactly 40 lowercase hexadecimal bytes. No abbreviated or
+symbolic revision may cross the resolution boundary.
+
+Invoke Git with `LC_ALL=C`, `TZ=UTC`, `GIT_OPTIONAL_LOCKS=0`,
+`GIT_NO_REPLACE_OBJECTS=1`, system and global configuration disabled, an empty
+pager, and command options that disable external diff, text conversion, and
+rename detection. Repository-local hooks are never invoked. Failure caused by
+repository ownership or safety checks is reported; Tacita never modifies
+`safe.directory`.
+
+Reject repositories with a non-empty legacy `info/grafts` file. Replacement
+refs remain disabled rather than interpreted. Reject object alternates,
+promisor remotes, and missing local objects.
+
+Build the Git child environment from an allowlist. Clear inherited repository,
+object-store, index, worktree, tracing, prompt, and attribute-source variables,
+including `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+`GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_INDEX_FILE`,
+`GIT_ATTR_SOURCE`, `GIT_TRACE*`, and credential or terminal prompt variables.
+
+## Integration history
+
+The initial experiment models changes as integration events on the first-parent
+chain of the explicitly resolved commit:
+
+- traverse the first-parent chain from its root to the resolved commit;
+- each chain commit defines one integration event;
+- for a single-parent commit, diff it against its parent;
+- for a merge commit, diff it against its first parent so the event represents
+  the net change introduced onto the integration line;
+- record the root commit but exclude its empty-tree diff from mining.
+
+This includes merge results as transactions but does not separately mine the
+internal commits of merged branches. A merge's other parents remain provenance
+and are not independent transactions. Octopus merges follow the same
+first-parent rule.
+
+A squash merge appears in Git as one new single-parent commit on the integration
+line. Its net file change is therefore preserved as one transaction, but local
+Git data cannot distinguish it from an ordinary direct commit.
+
+Rebase and fast-forward integration preserve multiple single-parent commits on
+the integration line. Without forge metadata, Git does not preserve the pull
+request boundary needed to combine them into one transaction. The
+provider-neutral experiment therefore treats each resulting commit as a
+separate integration event and reports this merge-policy sensitivity as a
+limitation. It must not infer review boundaries from commit messages or call a
+forge API.
+
+First-parent ancestry, not commit timestamps, defines event order and
+availability. At a cutoff commit, only that commit and its first-parent
+ancestors are available. Author and committer timestamps remain report evidence
+but cannot reorder events, so clock skew cannot place a child before its
+parent.
+
+An **eligible integration event** is a chain event that remains after all
+frozen path, size, history, and resource exclusions. Each eligible event
+becomes one transaction; every exclusion is counted by reason.
+
+The root event, events with no eligible paths, and events exceeding the frozen
+path or component limits are excluded with distinct reasons. Root exclusion
+prevents an initial repository snapshot or template import from fabricating
+co-change among every initial component.
+
+Reports identify the resolved commit, first-parent range, included timestamp
+range, explicit `as_of` time, Git/Tacita versions, parameters, and shallow
+status.
 
 Shallow history is rejected unless a separately approved research mode marks
 the report incomplete.
@@ -110,37 +196,84 @@ the report incomplete.
 Normalization must:
 
 - deduplicate paths;
-- preserve additions, modifications, deletions, and renames;
-- apply explicit path and commit-size exclusions;
+- preserve additions, modifications, deletions, and type changes;
+- disable rename and copy detection, representing a move as deletion plus
+  addition;
+- apply explicit path and integration-event-size exclusions;
 - retain a count for every exclusion reason;
-- avoid claiming rename continuity without a tested identity model;
-- read historical generated-file evidence from bounded Git blobs when path
-  heuristics are insufficient.
+- record whether evidence came from a single-parent, merge-result, or root
+  event;
+- avoid reading file contents or historical blobs during the first experiment.
 
 Path bytes may contain spaces, tabs, newlines, leading dashes, and non-UTF-8
 data. Parser boundaries must not depend on line-oriented text.
 
+## Component projection
+
+Projection is lexical and repository-relative:
+
+1. normalize Git's `/` separator without filesystem access, Unicode
+   normalization, case folding, symlink resolution, or path cleaning;
+2. exclude a path if any segment is exactly `vendor`;
+3. exclude gitlink entries representing submodules;
+4. map every remaining path to its parent directory;
+5. map a root-level file to the component `.`.
+
+Nested Go modules do not create implicit component boundaries. A directory
+containing Go files may receive descriptive package metadata, but its component
+identity remains its repository-relative directory bytes. Deleted-only
+directories remain valid historical component identities. Symlinks are treated
+as path evidence and their targets are never read or followed.
+
+With rename detection disabled, a cross-directory move contributes both the
+old and new parent components to the same integration event. A same-directory
+move contributes that component once after deduplication.
+
+Generated files, lockfiles, fixtures, documentation, and non-Go languages are
+included unless they match a frozen path exclusion above. The first experiment
+does not infer generated status from names or contents.
+
 ## Resource limits
 
-Milestone 0 freezes numeric values for:
+The first experiment uses these hard limits per repository run:
 
-- commits scanned;
-- paths per commit and unique paths;
-- components per commit and unique components;
-- directional component pairs;
-- Git stdout and stderr bytes;
-- elapsed time;
-- report rows and output bytes.
+| Resource | Limit | Exhaustion behavior |
+| --- | ---: | --- |
+| First-parent integration events scanned | 200,000 | fail |
+| Changed paths in one non-root event | 2,000 | exclude event |
+| Distinct path identities | 2,000,000 | fail |
+| Components in one event | 100 | exclude event |
+| Distinct component identities | 50,000 | fail |
+| Directional pair observations | 20,000,000 | fail |
+| Distinct directional pairs | 2,000,000 | fail |
+| Candidate-model configurations | 81 | fail |
+| Captured Git stdout | 1 GiB | fail |
+| Captured Git stderr per command | 1 MiB | fail |
+| Analysis elapsed time | 20 minutes | cancel and fail |
+| Peak resident memory | 2 GiB | terminate and fail |
+| Canonical report rows | 100,000 | fail |
+| Canonical report bytes | 64 MiB | fail |
+| Operational sidecar bytes | 1 MiB | fail |
 
-Budget exhaustion is a typed failure with diagnostics. It is never silent
-truncation or an empty successful report.
+Root events and events with no eligible paths are named exclusions independent
+of these limits. Per-event path and component limits exclude the complete event
+before aggregation; they never retain a prefix. Every global exhaustion is a
+typed failure with the observed count and limit. It is never silent truncation
+or an empty successful report.
+
+Runtime and memory acceptance use a Linux `amd64` reference runner with four
+logical CPUs, 8 GiB RAM, a local complete clone, no network access, and
+sequential Tacita execution. Clone time is excluded. The external experiment
+harness records monotonic elapsed time and peak resident set size in the
+operational sidecar; those observations do not enter canonical report bytes.
 
 ## Reports
 
-JSON is the machine contract. Text renders from the same typed model.
+The frozen machine contract is [`report-v1.md`](report-v1.md). JSON is
+authoritative; text renders from the same decoded typed model.
 
-For identical resolved inputs and configuration, canonical output must be
-byte-identical. Therefore:
+For identical resolved inputs, configuration, Tacita binary, and Git version,
+canonical output must be byte-identical. Therefore:
 
 - sort all map-derived output;
 - use stable final tie-breakers;
@@ -166,6 +299,9 @@ Malformed input, cancellation, and exhausted budgets must never become
 success-shaped empty results.
 
 ## Security boundary
+
+The detailed assets, trust boundaries, threats, controls, and exclusions are in
+the frozen [`threat-model.md`](threat-model.md).
 
 Assets at risk include CPU, memory, disk, deterministic output, and the user's
 local environment. Repository paths, metadata, blobs, object counts,
@@ -193,8 +329,10 @@ Use table-driven unit tests for:
 
 At the Git boundary, use the real installed Git executable with repositories
 under `t.TempDir()`. Do not mock Git. Integration cases include unusual
-filenames, option-like revisions, all change types, merges, shallow history,
-oversized commits, equal timestamps, cancellation, and repeated byte identity.
+filenames, option-like revisions, all change types, merge-result diffs,
+squash-shaped single-parent histories, rebase/fast-forward histories, shallow
+history, oversized events, equal timestamps, cancellation, and repeated byte
+identity.
 
 Fuzz the NUL parser, path/status decoding, normalization, projection, and report
 decoding with deterministic seed cases.

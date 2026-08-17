@@ -36,13 +36,10 @@ func main() {
 
 func realMain(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	// COACHING(remove before publication): os.Exit skips deferred calls in the
-	// current function. Keeping it in main lets realMain return and run cleanup.
 	defer stop()
 
 	if err := run(ctx, args, stdout); err != nil {
-		var usageErr *usageError
-		if errors.As(err, &usageErr) {
+		if usageErr, ok := errors.AsType[*usageError](err); ok {
 			if _, writeErr := fmt.Fprintln(stderr, usageErr); writeErr != nil {
 				return 1
 			}
@@ -76,15 +73,15 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 }
 
 func runBacktest(ctx context.Context, args []string, stdout io.Writer) error {
-	// COACHING(remove before publication): flag.FlagSet writes parse errors and
-	// help as a side effect. Capture them so run can classify the result and the
+	// flag.FlagSet writes parse errors and help as a side effect.
+	// Capture them so run can classify the result and the
 	// CLI boundary remains the only place that prints an error.
 	var flagOutput bytes.Buffer
 
 	flags := flag.NewFlagSet("backtest", flag.ContinueOnError)
 	flags.SetOutput(&flagOutput)
 	flags.Usage = func() {
-		fmt.Fprintln(&flagOutput, backtestUsage)
+		_, _ = fmt.Fprintln(&flagOutput, backtestUsage)
 		flags.PrintDefaults()
 	}
 

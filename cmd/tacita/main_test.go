@@ -66,8 +66,7 @@ func TestRun(t *testing.T) {
 
 			err := run(t.Context(), tt.args, &stdout)
 			if tt.wantUsage {
-				var usageErr *usageError
-				if !errors.As(err, &usageErr) {
+				if _, ok := errors.AsType[*usageError](err); !ok {
 					t.Fatalf("run() error = %v, want *usageError", err)
 				}
 				return

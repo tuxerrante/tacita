@@ -44,11 +44,16 @@ Implemented:
 - a testable `tacita backtest` command shell;
 - process-boundary exit codes and signal cancellation;
 - in-memory CLI tests;
+- supported Linux/amd64, Git 2.43+, and SHA-1 validation;
+- bounded, isolated revision resolution to a full commit object ID;
+- real-repository coverage for bare repositories, hostile revisions, unusual
+  paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- Git process execution or history parsing;
+- complete-repository preflight or history parsing;
+- the reusable bounded runner for `rev-list` and `diff-tree`;
 - transaction normalization or component projection;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
@@ -88,10 +93,11 @@ a newly preregistered run. Kapparmor results cannot modify this table.
 
 ## Next implementation step
 
-Begin Milestone 1 with the smallest independently testable Git boundary:
+Continue Milestone 1 from the smallest independently testable Git boundary:
 
-1. implement supported-environment validation and full commit resolution;
-2. add the cancellation-aware bounded Git runner;
+1. completed: supported-environment validation and full commit resolution;
+2. extend the private scalar executor into the cancellation-aware bounded
+   history runner;
 3. parse first-parent integration events and exclusion diagnostics;
 4. validate against real temporary repositories before adding mining.
 
@@ -125,7 +131,8 @@ Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
 The first learning exercise should implement `ResolveCommit` under the frozen
-environment, history, error, and budget contracts.
+environment, history, error, and budget contracts. That exercise is complete;
+complete-repository preflight and history traversal remain in this milestone.
 
 ### 2. Descriptive miner
 

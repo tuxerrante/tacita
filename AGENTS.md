@@ -89,10 +89,17 @@ go test ./cmd/tacita -run '^TestRun$' -count=1
 - Make precise changes and preserve unrelated local work.
 - Work on a task branch and deliver versioned changes through a pull request;
   do not commit directly to `main`.
-- Keep each pull request to one logical, independently reviewable change. Push
-  back on broad requests and propose dependency-safe PRs before implementation.
-- Run `/review-pr-hygiene` before publishing or updating a pull request. Use
-  squash as the merge method.
+- Give every pull request exactly one independent motivation. Sharing a
+  subsystem, milestone, reviewer, or implementation boundary is not sufficient.
+- Before implementation, classify every planned file by motivation. If any file
+  needs a different rationale, stop and split the work into separate or stacked
+  pull requests.
+- Documentation may accompany code only when it documents that exact behavior,
+  API, or operational requirement. Independent clarification belongs in its own
+  pull request.
+- Run `/review-pr-hygiene` against the final diff before publishing or updating
+  a pull request. Treat mixed concerns as blocking, not advisory. Use squash as
+  the merge method.
 - While the repository is private, explicitly request Copilot review on every
   pull request. Resolve every review conversation before evaluating merge
   readiness.

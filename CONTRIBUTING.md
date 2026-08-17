@@ -62,8 +62,13 @@ Before requesting review:
 
 1. run `make quality-gate`;
 2. run `/review-pr-hygiene`;
-3. complete the pull request template with the scope boundary, validation, and
+3. while the repository is private, explicitly request a Copilot review;
+4. complete the pull request template with the scope boundary, validation, and
    residual risk.
+
+Do not evaluate a private PR for merge until the Copilot review is complete and
+every review conversation is resolved. Copilot comments do not count as a
+human approval; they are an additional review gate.
 
 Squash is the only supported merge method. The PR title becomes the durable
 change summary, so use a focused conventional-commit title. Delete the source

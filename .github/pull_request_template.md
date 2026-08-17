@@ -15,12 +15,6 @@
 
 - [ ] `make quality-gate`
 - [ ] Tests cover changed behavior and failure paths, or are not applicable.
-- [ ] `/review-pr-hygiene`
-
-## Review
-
-- [ ] Copilot review was explicitly requested while the repository is private.
-- [ ] All review conversations are resolved before merge evaluation.
 
 ## Risks
 

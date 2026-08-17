@@ -55,30 +55,18 @@ or unrelated documentation.
 There is deliberately no line or file-count limit because generated changes
 and small cross-cutting contracts make those counts poor proxies for review
 cost. If a request spans multiple concerns or cannot be reviewed confidently
-as one unit, push back before implementation and split it into dependency-safe
-PRs. Stacked PRs are acceptable when each layer builds and passes its own gate.
+as one unit, split it into dependency-safe PRs. Stacked PRs are acceptable when
+each layer builds and passes its own gate.
 
 Before requesting review:
 
 1. run `make quality-gate`;
-2. run `/review-pr-hygiene`;
-3. while the repository is private, explicitly request a Copilot review;
-4. complete the pull request template with the scope boundary, validation, and
+2. complete the pull request template with the scope boundary, validation, and
    residual risk.
-
-Do not evaluate a private PR for merge until the Copilot review is complete and
-every review conversation is resolved. Copilot comments do not count as a
-human approval; they are an additional review gate.
 
 Squash is the only supported merge method. The PR title becomes the durable
 change summary, so use a focused conventional-commit title. Delete the source
 branch after merge.
-
-While this repository remains private on a GitHub plan without rulesets or
-branch protection, GitHub cannot technically reject a direct push or an
-unchecked merge. Maintainers must follow this policy manually. Bind the
-`quality-gate` job as a required check and require pull requests as soon as the
-repository becomes public or the plan supports private-repository rulesets.
 
 ## Go conventions
 

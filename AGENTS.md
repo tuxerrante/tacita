@@ -87,6 +87,15 @@ go test ./cmd/tacita -run '^TestRun$' -count=1
 ## Change rules
 
 - Make precise changes and preserve unrelated local work.
+- Work on a task branch and deliver versioned changes through a pull request;
+  do not commit directly to `main`.
+- Keep each pull request to one logical, independently reviewable change. Push
+  back on broad requests and propose dependency-safe PRs before implementation.
+- Run `/review-pr-hygiene` before publishing or updating a pull request. Use
+  squash as the merge method.
+- While the repository is private, explicitly request Copilot review on every
+  pull request. Resolve every review conversation before evaluating merge
+  readiness.
 - Write committed documentation, comments, and user-facing text in English.
 - Personal Italian coaching belongs only in ignored local files.
 - Do not commit generated `bin/`, `.go/`, or `coverage.out` artifacts.

@@ -46,6 +46,35 @@ make quality-gate
 `make check` uses incremental linting when a Git baseline exists.
 `make quality-gate` always performs the full validation suite.
 
+## Pull requests
+
+All versioned changes go through a pull request. Keep each PR to one logical,
+independently reviewable change; do not mix behavior, refactoring, formatting,
+or unrelated documentation.
+
+There is deliberately no line or file-count limit because generated changes
+and small cross-cutting contracts make those counts poor proxies for review
+cost. If a request spans multiple concerns or cannot be reviewed confidently
+as one unit, push back before implementation and split it into dependency-safe
+PRs. Stacked PRs are acceptable when each layer builds and passes its own gate.
+
+Before requesting review:
+
+1. run `make quality-gate`;
+2. run `/review-pr-hygiene`;
+3. complete the pull request template with the scope boundary, validation, and
+   residual risk.
+
+Squash is the only supported merge method. The PR title becomes the durable
+change summary, so use a focused conventional-commit title. Delete the source
+branch after merge.
+
+While this repository remains private on a GitHub plan without rulesets or
+branch protection, GitHub cannot technically reject a direct push or an
+unchecked merge. Maintainers must follow this policy manually. Bind the
+`quality-gate` job as a required check and require pull requests as soon as the
+repository becomes public or the plan supports private-repository rulesets.
+
 ## Go conventions
 
 - Prefer the standard library and concrete types.

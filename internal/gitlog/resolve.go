@@ -8,7 +8,15 @@ import (
 	"strings"
 )
 
-const minimumGitMinor = 43
+const (
+	supportedGOOS         = "linux"
+	supportedGOARCH       = "amd64"
+	minimumGitMajor       = 2
+	minimumGitMinor       = 43
+	supportedObjectFormat = "sha1"
+	sha256ObjectFormat    = "sha256"
+	sha1HexLength         = 40
+)
 
 // ResolveCommit validates the platform, Git version, and object format, then
 // resolves revision to a complete lowercase SHA-1 commit object ID. The caller
@@ -59,19 +67,19 @@ func ResolveCommit(
 		)
 	}
 
-	return string(output[:40]), nil
+	return string(output[:sha1HexLength]), nil
 }
 
 func validatePlatform(goos string, goarch string) error {
-	if goos != "linux" {
-		return fmt.Errorf("%w: got %q, require %q", ErrUnsupportedOS, goos, "linux")
+	if goos != supportedGOOS {
+		return fmt.Errorf("%w: got %q, require %q", ErrUnsupportedOS, goos, supportedGOOS)
 	}
-	if goarch != "amd64" {
+	if goarch != supportedGOARCH {
 		return fmt.Errorf(
 			"%w: got %q, require %q",
 			ErrUnsupportedArchitecture,
 			goarch,
-			"amd64",
+			supportedGOARCH,
 		)
 	}
 	return nil
@@ -89,10 +97,11 @@ func validateGitVersion(ctx context.Context) error {
 	}
 	if !supportedGitVersion(major, minor) {
 		return fmt.Errorf(
-			"%w: got %d.%d, require 2.%d or newer",
+			"%w: got %d.%d, require %d.%d or newer",
 			ErrUnsupportedGitVersion,
 			major,
 			minor,
+			minimumGitMajor,
 			minimumGitMinor,
 		)
 	}
@@ -129,7 +138,8 @@ func parseGitVersion(output []byte) (int, int, error) {
 }
 
 func supportedGitVersion(major int, minor int) bool {
-	return major > 2 || (major == 2 && minor >= minimumGitMinor)
+	return major > minimumGitMajor ||
+		(major == minimumGitMajor && minor >= minimumGitMinor)
 }
 
 func validateObjectFormat(ctx context.Context, repository string) error {
@@ -144,20 +154,25 @@ func validateObjectFormat(ctx context.Context, repository string) error {
 	}
 
 	switch string(output) {
-	case "sha1\n":
+	case supportedObjectFormat + "\n":
 		return nil
-	case "sha256\n":
-		return fmt.Errorf("%w: got %q, require %q", ErrUnsupportedObjectFormat, "sha256", "sha1")
+	case sha256ObjectFormat + "\n":
+		return fmt.Errorf(
+			"%w: got %q, require %q",
+			ErrUnsupportedObjectFormat,
+			sha256ObjectFormat,
+			supportedObjectFormat,
+		)
 	default:
 		return fmt.Errorf("%w: unexpected object format", ErrMalformedGitOutput)
 	}
 }
 
 func isFullSHA1(output []byte) bool {
-	if len(output) != 41 || output[40] != '\n' {
+	if len(output) != sha1HexLength+1 || output[sha1HexLength] != '\n' {
 		return false
 	}
-	for _, b := range output[:40] {
+	for _, b := range output[:sha1HexLength] {
 		if (b < '0' || b > '9') && (b < 'a' || b > 'f') {
 			return false
 		}

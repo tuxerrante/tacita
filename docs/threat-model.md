@@ -28,7 +28,7 @@ harness. Compromise of those dependencies is outside scope.
 | Threat | Example | Required controls | Residual risk |
 | --- | --- | --- | --- |
 | Argument or option injection | Revision begins with `-` | Argument arrays, `--end-of-options`, full object-ID resolution before traversal | Bugs in Git itself |
-| Shell execution | Repository path contains shell syntax | Never construct a shell command | Compromised executable |
+| Shell execution | Repository path contains shell syntax | Invoke trusted local Git directly with argument arrays; never construct a shell command | Compromised executable |
 | Ambient Git behavior | Global aliases, inherited `GIT_DIR`, tracing, pager, external diff | Allowlisted environment; disable system/global config, prompts, tracing, pager, external diff, text conversion, and optional locks | Repository parsing still uses Git |
 | History substitution | Replace refs, grafts, alternates, missing promisor objects | Disable replacements; reject grafts, alternates, promisors, and missing objects; report root/tip | Undetected Git implementation defects |
 | Hook or filter execution | Malicious checkout filter | Use object and diff commands that do not checkout; never invoke hooks | Future commands must preserve this invariant |

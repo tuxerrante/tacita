@@ -52,14 +52,15 @@ Implemented:
   before any history command can run;
 - bounded Git output that stops the child at its limit;
 - streamed first-parent event metadata, validated as a chain while it is read;
+- streamed `diff-tree` records normalized into per-event changed paths, with
+  disjoint exclusion counts and no cross-event accumulation;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- streaming `diff-tree` history parsing;
-- transaction normalization or component projection;
+- component projection or transaction aggregation;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
 - report schema or rendering;

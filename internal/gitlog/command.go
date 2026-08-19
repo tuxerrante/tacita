@@ -179,17 +179,24 @@ func (b *boundedReader) Read(p []byte) (int, error) {
 // its stdout to parse.
 //
 // Tacita owns no goroutine: it reads stdout on the calling goroutine, and only
-// os/exec's own stderr copier runs alongside. That makes the teardown order
-// load-bearing. Waiting on Git before its stdout reaches EOF can block it
-// forever on a full pipe, and WaitDelay does not start until the wait begins,
-// so a parse that stops early must cancel, drain to EOF, and only then wait.
+// os/exec's own stdin and stderr copiers run alongside. That makes the teardown
+// order load-bearing. Git can block writing stdout while the stdin copier
+// blocks writing stdin, and cancelling closes the child's ends of both, which
+// releases the copier and lets the drain reach EOF. Waiting on Git before its
+// stdout reaches EOF can block it forever on a full pipe, and WaitDelay does not
+// start until the wait begins, so a parse that stops early must cancel, drain to
+// EOF, and only then wait.
 //
-// The drain is deliberately unbounded. Stopping it short would recreate the
+// Unread output still counts against the limit, so the drain runs through the
+// bounded reader first and only then reaches EOF on the raw pipe. The final
+// drain is deliberately unbounded: stopping it short would recreate the
 // full-pipe deadlock, and the frozen commands disable every repository
-// controlled subprocess, so nothing else can hold the pipe open.
+// controlled subprocess, so nothing else can hold the pipe open. It is bounded
+// in practice because crossing the limit already stopped the child.
 func runStreaming(
 	ctx context.Context,
 	operation string,
+	stdin io.Reader,
 	limit int,
 	parse func(io.Reader) error,
 	args ...string,
@@ -205,6 +212,7 @@ func runStreaming(
 
 	cmd := exec.CommandContext(runCtx, "git", args...)
 	cmd.Env = gitEnvironment()
+	cmd.Stdin = stdin
 	cmd.Stderr = stderr
 	cmd.WaitDelay = gitWaitDelay
 
@@ -220,10 +228,16 @@ func runStreaming(
 	parseErr := parse(stdout)
 	if parseErr != nil {
 		stop()
-		// The raw pipe is drained rather than the bounded reader, which refuses
-		// to read once its limit is gone.
-		_, _ = io.Copy(io.Discard, pipe)
 	}
+	// The drain is unconditional because waiting behind unread stdout blocks
+	// Git on a full pipe whether the parse failed or merely stopped early.
+	// Anything the parser left unread still counts against the output limit, so
+	// it is drained through the bounded reader first: a parse that succeeded
+	// early would otherwise let a repository produce unbounded output for free.
+	// Crossing the limit stops the child, after which the raw pipe is drained to
+	// EOF so nothing holds it open.
+	_, _ = io.Copy(io.Discard, stdout)
+	_, _ = io.Copy(io.Discard, pipe)
 	waitErr := cmd.Wait()
 
 	return classifyStream(operation, ctx, limit, stdout, stderr, parseErr, waitErr)

@@ -199,7 +199,7 @@ func FuzzParseFirstParentEvents(f *testing.F) {
 	})
 }
 
-func mustObjectID(t *testing.T, value string) ObjectID {
+func mustObjectID(t testing.TB, value string) ObjectID {
 	t.Helper()
 
 	id, err := parseObjectID(value)

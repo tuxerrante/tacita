@@ -3,6 +3,7 @@ package gitlog
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,5 +84,25 @@ func TestRunGitReportsCallerCancellation(t *testing.T) {
 	}
 	if errors.Is(err, ErrGitOutputLimit) {
 		t.Error("runGit() reported an output limit for a cancelled caller")
+	}
+}
+
+// TestRunStreamingLimitsOutputTheParserNeverRead keeps a parser that succeeds
+// early from letting a repository produce output for free. The limit must be
+// enforced on the drain, not only on what the parser chose to consume.
+func TestRunStreamingLimitsOutputTheParserNeverRead(t *testing.T) {
+	repository, ids := newBranchedTestRepository(t)
+	opened := openTestRepository(t, repository)
+
+	args, err := opened.bind("rev-list", "--first-parent", "--reverse", "--parents", ids["merge"])
+	if err != nil {
+		t.Fatalf("bind() error = %v", err)
+	}
+	read := func(io.Reader) error { return nil }
+
+	err = runStreaming(t.Context(), "listing integration events", nil, 8, read, args...)
+
+	if !errors.Is(err, ErrGitOutputLimit) {
+		t.Fatalf("runStreaming() error = %v, want ErrGitOutputLimit", err)
 	}
 }

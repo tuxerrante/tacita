@@ -228,6 +228,41 @@ The caller's context is left untouched, so a run stopped by a limit is still
 classified as an output-limit failure and not as a caller cancellation or a
 killed process.
 
+`EachEventChange` implements the second streamed boundary. It runs the frozen
+`diff-tree` command, feeds it the event chain `FirstParentEvents` produced, and
+hands each event's normalized paths to a visitor as they are decoded. Nothing is
+accumulated across events: 200,000 events holding 2,000 paths each would exceed
+the resource budget, so the caller decides what to keep. Each visited slice is
+uniquely owned by the receiver and is never reused.
+
+The decoder dispatches on a single byte. A record always begins with `:`, and an
+object ID never does, so a boundary needs no lookahead. Every boundary is
+compared against the next expected event, which makes a desynchronized stream a
+failure rather than evidence attributed to the wrong commit.
+
+Exclusion precedence is applied per event in a fixed order, so counts stay
+disjoint and a repository cannot spend another repository's budget:
+
+1. raw paths are deduplicated first;
+2. the 2,000-path event limit is applied to distinct raw paths *before* vendor
+   and gitlink filtering, so unlimited excluded paths cannot evade the budget;
+3. event reasons are `root_event`, then `event_path_limit`, then
+   `no_eligible_paths`;
+4. an event over the path limit contributes only `event_path_limit` and
+   discards its provisional path counts;
+5. a vendored gitlink counts only as `vendor_path`.
+
+Steps 2, 4, and 5 resolve a genuine gap: the frozen text names the reasons but
+never fixed their precedence. They are ratified here and are the behavior the
+implementation pins.
+
+Retained memory per event is bounded by the path limit, but a single path is
+bounded only by the 1 GiB stream budget. No separate path-length limit was
+invented, so the strict per-event memory claim rests on the output cap rather
+than on a path bound.
+
+This boundary is provisional and under review.
+
 ## Supported experiment environment
 
 The first experiment supports:
@@ -445,6 +480,12 @@ forever on a full pipe, and `WaitDelay` does not start until the wait begins.
 Therefore, when a budget or grammar failure stops parsing early, cancel the
 child's context, drain stdout to EOF, wait, and only then return the saved
 failure. The original context's failure, if any, wins over the parser's.
+
+The drain runs whether or not parsing failed, since a parser that stopped early
+without failing blocks Git just as effectively. Output the parser never read
+still counts against the byte budget, so the drain runs through the bounded
+reader before it reaches EOF on the raw pipe; otherwise a parser that succeeded
+early would let a repository produce unbounded output for free.
 
 A per-event exclusion is not a stop condition. Excluded events are consumed and
 counted, and parsing continues; only global exhaustion and malformed input end

@@ -50,6 +50,7 @@ Implemented:
   validated the environment and classified the repository target;
 - rejection of shallow, grafted, alternate-backed, and promisor repositories
   before any history command can run;
+- bounded Git output that stops the child at its limit;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
@@ -64,11 +65,9 @@ Not implemented:
 - proposal, ratification, manifests, or checking.
 
 The current CLI is disposable. Its shape may change when the first real command
-contract is frozen. The implemented Git boundary is likewise provisional: a
-pre-implementation review found a repository-discovery escape, now fixed, and a
-bounded writer that discards overflow instead of stopping the child, which is
-still scheduled below and recorded in
-[`docs/architecture.md`](docs/architecture.md#repository-targeting).
+contract is frozen. The implemented Git boundary is likewise provisional and
+still under review; each review pass so far has found and fixed a defect,
+recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
 ## Frozen Milestone 0 decisions
 
@@ -116,8 +115,8 @@ one is stacked on the previous:
 4. completed: reject shallow, grafted, alternate-backed, and promisor
    repositories before traversal, and carry that preflight result in the same
    value;
-5. make bounded-output overflow tear the child down instead of discarding the
-   overflow;
+5. completed: make bounded-output overflow tear the child down instead of
+   discarding the overflow;
 6. stream and validate `rev-list` first-parent event metadata;
 7. stream `diff-tree` records into normalized events and exclusion
    diagnostics.

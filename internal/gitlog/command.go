@@ -109,14 +109,3 @@ func gitEnvironment() []string {
 		"SSH_ASKPASS=/bin/false",
 	}
 }
-
-func repositoryGitArgs(repository string, args ...string) []string {
-	base := []string{
-		"-C", repository,
-		"-c", "core.abbrev=40",
-		"-c", "core.fsmonitor=false",
-		"-c", "core.hooksPath=/dev/null",
-		"-c", "diff.external=",
-	}
-	return append(base, args...)
-}

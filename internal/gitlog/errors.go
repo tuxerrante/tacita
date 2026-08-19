@@ -9,6 +9,9 @@ import (
 var (
 	// ErrInvalidInput identifies an empty repository path or revision.
 	ErrInvalidInput = errors.New("invalid input")
+	// ErrNotARepository identifies a path that is neither a worktree nor a bare
+	// repository, which Git would otherwise resolve against an ancestor.
+	ErrNotARepository = errors.New("not a Git repository")
 	// ErrUnsupportedOS identifies an operating system outside the frozen boundary.
 	ErrUnsupportedOS = errors.New("unsupported operating system")
 	// ErrUnsupportedArchitecture identifies a CPU architecture outside the frozen boundary.

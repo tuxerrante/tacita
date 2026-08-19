@@ -44,17 +44,22 @@ func ResolveCommit(
 		return "", err
 	}
 
+	resolveArgs, err := repositoryGitArgs(
+		repository,
+		"rev-parse",
+		"--verify",
+		"--end-of-options",
+		revision+"^{commit}",
+	)
+	if err != nil {
+		return "", err
+	}
+
 	output, err := runGit(
 		ctx,
 		"resolving commit",
 		maxScalarOutput,
-		repositoryGitArgs(
-			repository,
-			"rev-parse",
-			"--verify",
-			"--end-of-options",
-			revision+"^{commit}",
-		)...,
+		resolveArgs...,
 	)
 	if err != nil {
 		return "", err
@@ -143,12 +148,12 @@ func supportedGitVersion(major int, minor int) bool {
 }
 
 func validateObjectFormat(ctx context.Context, repository string) error {
-	output, err := runGit(
-		ctx,
-		"checking Git object format",
-		maxScalarOutput,
-		repositoryGitArgs(repository, "rev-parse", "--show-object-format")...,
-	)
+	args, err := repositoryGitArgs(repository, "rev-parse", "--show-object-format")
+	if err != nil {
+		return err
+	}
+
+	output, err := runGit(ctx, "checking Git object format", maxScalarOutput, args...)
 	if err != nil {
 		return err
 	}

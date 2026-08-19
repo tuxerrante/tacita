@@ -107,7 +107,7 @@ func (r *Repository) firstParentEvents(
 		events, parseErr = parseFirstParentEvents(source, eventLimit)
 		return parseErr
 	}
-	if err := runStreaming(ctx, "listing integration events", outputLimit, parse, bound...); err != nil {
+	if err := runStreaming(ctx, "listing integration events", nil, outputLimit, parse, bound...); err != nil {
 		return nil, err
 	}
 

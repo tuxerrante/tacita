@@ -7,6 +7,7 @@ UV_TOOLS_DIR := .go/uv-tools
 RUMDL_CACHE_DIR := .go/rumdl-cache
 COVERAGE_FILE := coverage.out
 MIN_COVERAGE ?= 80
+FUZZTIME ?= 1m
 
 GOFUMPT_VERSION ?= v0.11.0
 GITLEAKS_VERSION ?= v8.30.1
@@ -21,7 +22,7 @@ RUMDL := $(TOOLS_DIR)/rumdl
 
 LINT_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD 2>/dev/null)
 
-.PHONY: all help tools fmt fmt-check markdown-check vet lint lint-new test test-race coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run clean
+.PHONY: all help tools fmt fmt-check markdown-check vet lint lint-new test test-race fuzz coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run clean
 .NOTPARALLEL: check quality-gate pre-commit-run
 
 all: check ## Run the incremental local validation gate
@@ -92,6 +93,14 @@ test: ## Run unit and integration tests
 
 test-race: ## Run tests with the race detector
 	go test -race -shuffle=on ./...
+
+fuzz: ## Run every fuzz target against the mutation engine for FUZZTIME
+	@for package in $$(go list ./...); do \
+		for target in $$(go test -list '^Fuzz' "$$package" | grep '^Fuzz'); do \
+			echo "Fuzzing $$target in $$package for $(FUZZTIME)"; \
+			go test "$$package" -run '^$$' -fuzz "^$$target\$$" -fuzztime "$(FUZZTIME)" || exit 1; \
+		done; \
+	done
 
 coverage: ## Enforce the minimum test coverage
 	go test -race -covermode=atomic -coverprofile="$(COVERAGE_FILE)" ./...

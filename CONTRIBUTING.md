@@ -46,6 +46,12 @@ make quality-gate
 `make check` uses incremental linting when a Git baseline exists.
 `make quality-gate` always performs the full validation suite.
 
+Neither gate runs the fuzzing engine, because a mutation search is
+non-deterministic and cannot decide whether a change may merge. A scheduled
+workflow searches for new inputs instead, and `make fuzz FUZZTIME=2m`
+reproduces it locally. Commit any input it reports as a seed under
+`testdata/fuzz`, so the deterministic gate covers it from then on.
+
 ## Pull requests
 
 All versioned changes go through a pull request. Keep each PR to one logical,

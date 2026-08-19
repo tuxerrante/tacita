@@ -77,16 +77,25 @@ Prefer standard interfaces such as `io.Reader` and `io.Writer`. Define a
 consumer-side interface only after real substitution appears; return concrete
 types.
 
+Inside `internal/gitlog`, a concrete run-scoped repository value carries the
+classified repository target, the validated environment, and the preflight
+result, and exposes resolution and traversal as methods. It exists to make the
+required ordering unrepresentable — no object access before containment and
+preflight — not to cache work; one run resolves one tip, so avoiding a repeated
+version check would not justify it. Its lifetime is one analysis run. It is a
+concrete type, not an interface, and it is not a reusable long-lived handle.
+
 ## Git process boundary
 
 The analyzed repository is untrusted input. Git invocation must:
 
 - use `exec.CommandContext` with an argument array, never a shell;
 - pass paths and revisions as separate arguments;
+- target the repository explicitly instead of relying on Git's discovery walk;
 - resolve a revision first with:
 
   ```text
-  git -C <repository> rev-parse --verify --end-of-options <revision>^{commit}
+  git <repository-target> rev-parse --verify --end-of-options <revision>^{commit}
   ```
 
 - validate the complete object ID and use only that ID in later history
@@ -101,6 +110,36 @@ The analyzed repository is untrusted input. Git invocation must:
 - wait for every child process on cancellation.
 
 A `--` path separator alone does not make an untrusted revision safe.
+
+### Repository targeting
+
+`git -C <path>` does not confine Git to `<path>`. Git walks upward until it
+finds a repository, so a path that is not a repository silently resolves
+against an ancestor repository and analyzes a target the operator never named.
+That is target confusion and an unintended read of unrelated local history, not
+a determinism defect: the resolved object ID still identifies the analyzed
+history.
+
+`GIT_CEILING_DIRECTORIES` and `GIT_DISCOVERY_ACROSS_FILESYSTEM` are not
+sufficient controls. The first is a colon-separated list and therefore cannot
+express a path containing `:`; the second only stops mount crossings.
+
+Tacita therefore removes discovery instead of detecting it afterwards. It
+classifies the supplied path once, with a filesystem check and no Git process,
+and then fixes the target arguments for the whole run:
+
+| Supplied path | Classification | Target arguments |
+| --- | --- | --- |
+| contains a `.git` directory or gitfile | worktree | `--git-dir=<path>/.git --work-tree=<path>` |
+| otherwise | bare | `--git-dir=<path>` |
+
+A gitfile covers linked worktrees and submodule worktrees, so both keep working
+without a separate case. A symlinked repository path is accepted and resolved
+by the kernel. A path that is neither shape fails with a typed error before any
+revision is dereferenced.
+
+`--work-tree` is set only for the worktree shape; the frozen history commands
+read objects and never touch the working tree.
 
 ### Implemented scalar Git boundary
 
@@ -120,6 +159,16 @@ The caller owns the elapsed-time deadline. Successful resolution establishes an
 immutable commit identity but does not establish complete history. Shallow,
 graft, alternates, promisor, and missing-object checks remain mandatory before
 the ID reaches history traversal.
+
+This boundary is provisional and under review. Two defects are known and
+scheduled:
+
+- it targets the repository with `-C`, so it inherits the discovery escape
+  described above;
+- its bounded writer keeps accepting and discarding bytes after the limit is
+  reached, so a hostile repository still pays for the full overflow before the
+  run fails. The writer must instead fail the write, which makes `os/exec`
+  close the read pipe and stop the copy, and cancel the child.
 
 ## Supported experiment environment
 
@@ -162,10 +211,32 @@ external-diff, text-conversion, merge-diff, and rename behavior.
 Preflight uses `rev-parse --is-shallow-repository` and
 `rev-parse --path-format=absolute --git-common-dir`. Inspect graft and alternate
 files relative to the common directory, not a linked worktree's private Git
-directory. Read local `extensions.partialClone` and `remote.*.promisor`
-configuration only to reject the repository. Any missing-object failure during
-traversal is `incomplete_repository`; the bounded run does not perform a full
-`git fsck`.
+directory. Reject a graft or alternate entry whose path is not a regular file
+rather than reading it, so a symlink, FIFO, or device cannot redirect or block
+the run, and bound every such read. Read promisor configuration only to reject
+the repository, from the effective local and worktree scopes rather than the
+local scope alone, because `includeIf` and worktree-scoped configuration
+otherwise hide it. Git normalizes configuration keys to lowercase, so match
+`extensions.partialclone` and `remote.<name>.promisor` case-insensitively. Any
+missing-object failure during traversal is `incomplete_repository`; the bounded
+run does not perform a full `git fsck`.
+
+Preflight rejects known incompleteness mechanisms; it cannot prove that every
+required object is present. The frozen data flow omits `--root`, so the root
+commit's tree is never read, and objects reachable only through secondary
+parents are never traversed. Complete local objects therefore remain a support
+precondition, and missing objects discovered during traversal are classified,
+not prevented. Because Git offers no stable machine-readable distinction
+between a missing object and other traversal failures, and stderr text is not a
+branching input, any unclassifiable traversal failure is reported
+conservatively rather than guessed.
+
+Rejecting promisor and partial-clone repositories is a correctness *and*
+isolation requirement. `diff-tree` over a partial clone lazily fetches the
+missing objects it needs: it reaches the network and writes new packs into the
+repository, which breaks both the offline and the read-only guarantee. This
+happens during traversal, not during revision resolution, so the check must
+complete before the resolved ID reaches the history commands.
 
 Build the Git child environment from an allowlist. Clear inherited repository,
 object-store, index, worktree, tracing, prompt, and attribute-source variables,
@@ -227,13 +298,14 @@ Shallow history is rejected in the first experiment.
 
 ### Frozen Git data flow
 
-Use two bounded Git commands with the frozen environment and `-c` overrides:
+Use two bounded Git commands with the frozen environment, repository target,
+and `-c` overrides:
 
 ```text
-git -C <repository> rev-list \
+git <repository-target> rev-list \
   --first-parent --reverse --parents <resolved-object-id>
 
-git -C <repository> diff-tree \
+git <repository-target> diff-tree \
   --stdin --always -r --raw -z --abbrev=40 \
   --no-renames --no-textconv --no-ext-diff \
   --diff-merges=first-parent
@@ -268,10 +340,47 @@ Normalization must:
 - retain a count for every exclusion reason;
 - record whether evidence came from a single-parent, merge-result, or root
   event;
+- match every boundary against the expected `rev-list` object-ID sequence, so a
+  desynchronized stream fails instead of misattributing paths to an event;
+- exclude the root event as `root` even when it also has no eligible paths, so
+  exclusion reasons stay disjoint and countable;
 - avoid reading file contents or historical blobs during the first experiment.
 
 Path bytes may contain spaces, tabs, newlines, leading dashes, and non-UTF-8
 data. Parser boundaries must not depend on line-oriented text.
+
+### Bounded streaming contract
+
+Neither command's output may be buffered whole.
+
+`--first-parent` restricts which commits are listed, not how many parents each
+listed commit prints. An octopus merge on the chain prints all of its parents
+on one line, so a `rev-list` line has no fixed upper length and the command's
+output can approach the 1 GiB stdout cap while the run must stay inside a 2 GiB
+resident budget. Parse `rev-list` incrementally, validate every field as a full
+object ID, and retain only the first-parent metadata the run needs. Retaining
+the first object ID of each event is bounded to roughly 8 MiB at the 200,000
+event limit, which is what `diff-tree` receives on stdin. Do not configure a
+token-oriented reader with a near-1-GiB allowance.
+
+`diff-tree` stdout must be streamed for the same reason and decoded as NUL
+records, never as lines.
+
+Execution stays sequential and Tacita owns no goroutine. Supplying `diff-tree`
+stdin as an in-memory reader makes `os/exec` own the finite stdin-writing
+goroutine, while Tacita reads stdout itself. This is deadlock-free only on the
+success path: waiting on the child before stdout reaches EOF can block Git
+forever on a full pipe, and `WaitDelay` does not start until the wait begins.
+Therefore, when a budget or grammar failure stops parsing early, cancel the
+child's context, drain stdout to EOF, wait, and only then return the saved
+failure. The original context's failure, if any, wins over the parser's.
+
+A per-event exclusion is not a stop condition. Excluded events are consumed and
+counted, and parsing continues; only global exhaustion and malformed input end
+the stream.
+
+The bounded scalar writer used for fixed-grammar output is not reusable for
+this stream.
 
 ## Component projection
 

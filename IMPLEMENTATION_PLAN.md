@@ -52,8 +52,8 @@ Implemented:
 
 Not implemented:
 
-- complete-repository preflight or history parsing;
-- the reusable bounded runner for `rev-list` and `diff-tree`;
+- explicit repository targeting and complete-repository preflight;
+- streaming `rev-list` and `diff-tree` history parsing;
 - transaction normalization or component projection;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
@@ -61,7 +61,11 @@ Not implemented:
 - proposal, ratification, manifests, or checking.
 
 The current CLI is disposable. Its shape may change when the first real command
-contract is frozen.
+contract is frozen. The implemented Git boundary is likewise provisional: a
+pre-implementation review found a repository-discovery escape and a bounded
+writer that discards overflow instead of stopping the child. Both are recorded
+in [`docs/architecture.md`](docs/architecture.md#repository-targeting) and
+scheduled below.
 
 ## Frozen Milestone 0 decisions
 
@@ -93,16 +97,54 @@ a newly preregistered run. Kapparmor results cannot modify this table.
 
 ## Next implementation step
 
-Continue Milestone 1 from the smallest independently testable Git boundary:
+Continue Milestone 1 from the smallest independently testable Git boundary. A
+design review before implementation replaced the earlier "extend the executor
+into a history runner" step with a sequence that fixes the boundary before
+building on it. Each entry is one pull request with one motivation, and each
+one is stacked on the previous:
 
 1. completed: supported-environment validation and full commit resolution;
-2. extend the private scalar executor into the cancellation-aware bounded
-   history runner;
-3. parse first-parent integration events and exclusion diagnostics;
-4. validate against real temporary repositories before adding mining.
+2. target the repository explicitly so Git cannot discover an ancestor
+   repository, per
+   [repository targeting](docs/architecture.md#repository-targeting);
+3. carry the classified target and preflight result in a run-scoped repository
+   value, so object access cannot precede validation;
+4. reject shallow, grafted, alternate-backed, and promisor repositories before
+   traversal;
+5. make bounded-output overflow tear the child down instead of discarding the
+   overflow;
+6. stream and validate `rev-list` first-parent event metadata;
+7. stream `diff-tree` records into normalized events and exclusion
+   diagnostics.
+
+Steps 6 and 7 are not split into a generic runner plus a parser. The two
+commands have materially different output shapes and consumers, and a runner
+that returned buffered output would violate the
+[bounded streaming contract](docs/architecture.md#bounded-streaming-contract).
+
+Validate every step against real temporary repositories before adding mining.
 
 Do not implement candidate aggregation, calibration, profiles, or holdout
 evaluation in Milestone 1.
+
+### Milestone 1 design review record
+
+A pre-implementation review, repeated with a second independent model, changed
+the design. It ran against Git 2.55.0 and recorded these outcomes:
+
+| Question | Outcome |
+| --- | --- |
+| Does `git -C <path>` confine Git to that path? | No. A non-repository path resolved an ancestor repository's commit, so discovery is removed rather than detected. |
+| Are `GIT_CEILING_DIRECTORIES` or `GIT_DISCOVERY_ACROSS_FILESYSTEM` enough? | No. The first cannot express a path containing `:`; the second only stops mount crossings. |
+| Can the repository be identified by comparing `--git-dir` to the supplied path? | No. Bare repositories, linked worktrees, submodules, and symlinked paths each report a different directory. Explicit targeting avoids the comparison. |
+| Does revision resolution mutate a partial clone? | No. `rev-parse` left the object store unchanged; `diff-tree` fetched and wrote new packs. Preflight must precede traversal, not resolution. |
+| Is `rev-list --parents` output bounded per line? | No. An octopus merge printed all five parents on one line under `--first-parent`, so the stream must be parsed incrementally. |
+| Is streaming `diff-tree` with an in-memory stdin deadlock-free? | Only on the success path. Early termination must cancel, drain to EOF, then wait. |
+| Can preflight prove complete local objects? | No. The frozen flow omits `--root` and never traverses secondary parents, so missing objects are classified during traversal instead. |
+
+These are implementation and safety corrections. They change no corpus ID,
+threshold, report field, resource budget, or component or history semantics, so
+the Milestone 0 freeze is unaffected.
 
 ## Milestones
 

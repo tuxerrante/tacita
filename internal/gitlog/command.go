@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"time"
 )
 
 const (
 	maxScalarOutput = 4 << 10
+	maxStreamOutput = 1 << 30
 	maxGitStderr    = 1 << 20
 	gitWaitDelay    = 2 * time.Second
 )
@@ -134,5 +136,123 @@ func gitEnvironment() []string {
 		"GIT_TERMINAL_PROMPT=0",
 		"PAGER=cat",
 		"SSH_ASKPASS=/bin/false",
+	}
+}
+
+// boundedReader caps how much of a streamed Git output the run will read. The
+// parser above it bounds memory, not total bytes, so without this a repository
+// could keep a run busy for as long as it can keep producing valid records.
+//
+// Reading one byte past the limit is what distinguishes a stream that ends
+// exactly at the limit from one that exceeds it.
+type boundedReader struct {
+	source    io.Reader
+	remaining int
+	exceeded  bool
+	stop      func()
+}
+
+func (b *boundedReader) Read(p []byte) (int, error) {
+	if b.exceeded {
+		return 0, errOutputLimit
+	}
+	if len(p) > b.remaining+1 {
+		p = p[:b.remaining+1]
+	}
+
+	n, err := b.source.Read(p)
+	b.remaining -= n
+	if b.remaining < 0 {
+		b.exceeded = true
+		b.stop()
+		return n - 1, errOutputLimit
+	}
+
+	return n, err
+}
+
+// runStreaming runs a Git command whose output is too large to buffer and hands
+// its stdout to parse.
+//
+// Tacita owns no goroutine: it reads stdout on the calling goroutine, and only
+// os/exec's own stderr copier runs alongside. That makes the teardown order
+// load-bearing. Waiting on Git before its stdout reaches EOF can block it
+// forever on a full pipe, and WaitDelay does not start until the wait begins,
+// so a parse that stops early must cancel, drain to EOF, and only then wait.
+//
+// The drain is deliberately unbounded. Stopping it short would recreate the
+// full-pipe deadlock, and the frozen commands disable every repository
+// controlled subprocess, so nothing else can hold the pipe open.
+func runStreaming(
+	ctx context.Context,
+	operation string,
+	limit int,
+	parse func(io.Reader) error,
+	args ...string,
+) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	stderr := newLimitedBuffer(maxGitStderr, stop)
+
+	cmd := exec.CommandContext(runCtx, "git", args...)
+	cmd.Env = gitEnvironment()
+	cmd.Stderr = stderr
+	cmd.WaitDelay = gitWaitDelay
+
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return &GitError{Operation: operation, Err: err}
+	}
+	if err := cmd.Start(); err != nil {
+		return &GitError{Operation: operation, Err: err, stderr: stderr.bytes()}
+	}
+
+	stdout := &boundedReader{source: pipe, remaining: limit, stop: stop}
+	parseErr := parse(stdout)
+	if parseErr != nil {
+		stop()
+		// The raw pipe is drained rather than the bounded reader, which refuses
+		// to read once its limit is gone.
+		_, _ = io.Copy(io.Discard, pipe)
+	}
+	waitErr := cmd.Wait()
+
+	return classifyStream(operation, ctx, limit, stdout, stderr, parseErr, waitErr)
+}
+
+// classifyStream picks the one failure worth reporting.
+//
+// The caller's deadline outranks everything, because a run it gave up on
+// explains every other symptom. A limit comes next: exceeding one cancels Git,
+// which would otherwise surface as a killed process or a truncated stream. A
+// genuine grammar violation outranks the exit status it caused, while a merely
+// truncated stream does not, because Git's own diagnosis says more.
+func classifyStream(
+	operation string,
+	ctx context.Context,
+	limit int,
+	stdout *boundedReader,
+	stderr *limitedBuffer,
+	parseErr error,
+	waitErr error,
+) error {
+	switch {
+	case ctx.Err() != nil:
+		return fmt.Errorf("%s: %w", operation, ctx.Err())
+	case stdout.exceeded:
+		return &OutputLimitError{Operation: operation, Stream: "stdout", Limit: limit}
+	case stderr.exceeded:
+		return &OutputLimitError{Operation: operation, Stream: "stderr", Limit: maxGitStderr}
+	case parseErr != nil && !errors.Is(parseErr, errTruncatedStream):
+		return parseErr
+	case waitErr != nil:
+		return &GitError{Operation: operation, Err: waitErr, stderr: stderr.bytes()}
+	default:
+		return parseErr
 	}
 }

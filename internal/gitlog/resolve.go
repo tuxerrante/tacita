@@ -153,10 +153,18 @@ func validateObjectFormat(ctx context.Context, target []string) error {
 }
 
 func isFullSHA1(output []byte) bool {
-	if len(output) != sha1HexLength+1 || output[sha1HexLength] != '\n' {
+	return len(output) == sha1HexLength+1 &&
+		output[sha1HexLength] == '\n' &&
+		isObjectID(output[:sha1HexLength])
+}
+
+// isObjectID reports whether value is exactly one complete lowercase
+// hexadecimal SHA-1 object ID, with nothing around it.
+func isObjectID(value []byte) bool {
+	if len(value) != sha1HexLength {
 		return false
 	}
-	for _, b := range output[:sha1HexLength] {
+	for _, b := range value {
 		if (b < '0' || b > '9') && (b < 'a' || b > 'f') {
 			return false
 		}

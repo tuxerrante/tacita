@@ -205,9 +205,9 @@ func (d *changeDecoder) decode(source io.Reader) error {
 			continue
 		}
 
-		if err := reader.UnreadByte(); err != nil {
-			return fmt.Errorf("%w: reading a change boundary: %w", errTruncatedStream, err)
-		}
+		// The byte just read came from a successful ReadByte on this reader, so
+		// putting it back cannot fail.
+		_ = reader.UnreadByte()
 		if err := d.readBoundary(reader); err != nil {
 			return err
 		}

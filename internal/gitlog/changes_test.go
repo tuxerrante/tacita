@@ -450,7 +450,24 @@ func FuzzChangeDecoder(f *testing.F) {
 		}
 
 		if err := decoder.decode(strings.NewReader(input)); err != nil {
+			// Every rejection speaks the boundary's vocabulary. An error that
+			// escapes untyped would reach the CLI as an unexplained failure.
+			if !errors.Is(err, ErrMalformedGitOutput) {
+				t.Fatalf("rejected input with an unclassified error: %v", err)
+			}
 			return
+		}
+		// Boundaries are matched against the chain, so an accepted stream
+		// visits events in chain order and never revisits one.
+		next := 0
+		for _, paths := range visited {
+			for next < len(events) && events[next].ID != paths.Event.ID {
+				next++
+			}
+			if next == len(events) {
+				t.Fatalf("visited %s out of chain order", paths.Event.ID)
+			}
+			next++
 		}
 		for _, paths := range visited {
 			if paths.Event.Kind == RootEvent {

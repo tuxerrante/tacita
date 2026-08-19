@@ -20,7 +20,8 @@ const (
 	maxConfigOutput = 1 << 20
 	// maxOverrideFile bounds a graft or alternates file. Both are rejected when
 	// non-empty, so the limit only has to be large enough to distinguish empty
-	// from non-empty.
+	// from non-empty. A file that exceeds it is rejected rather than truncated,
+	// because a truncated prefix cannot prove the rest of the file is empty.
 	maxOverrideFile = 64 << 10
 
 	graftsFile     = "info/grafts"
@@ -29,6 +30,7 @@ const (
 	partialCloneExtension = "extensions.partialclone"
 	remoteKeyPrefix       = "remote."
 	promisorKeySuffix     = ".promisor"
+	filterKeySuffix       = ".partialclonefilter"
 )
 
 // preflight records what the completeness checks established about a
@@ -166,9 +168,22 @@ func rejectHistoryOverride(mechanism string, path string) error {
 		return notRegularFile(mechanism, path)
 	}
 
-	content, err := io.ReadAll(io.LimitReader(file, maxOverrideFile))
+	// One byte past the limit distinguishes a fully read file from a truncated
+	// one. Without it a file of leading whitespace longer than the limit would
+	// trim to empty and be accepted while Git still reads the entry that
+	// follows.
+	content, err := io.ReadAll(io.LimitReader(file, maxOverrideFile+1))
 	if err != nil {
 		return fmt.Errorf("reading %s file: %w", mechanism, err)
+	}
+	if len(content) > maxOverrideFile {
+		return fmt.Errorf(
+			"%w: %s file %q exceeds %d bytes",
+			ErrIncompleteRepository,
+			mechanism,
+			path,
+			maxOverrideFile,
+		)
 	}
 	if len(bytes.TrimSpace(content)) > 0 {
 		return fmt.Errorf(
@@ -195,6 +210,11 @@ func notRegularFile(mechanism string, path string) error {
 // This is an isolation requirement as much as a completeness one: traversal over
 // a partial clone reaches the network and writes new packs, breaking both the
 // offline and the read-only guarantee.
+//
+// A remote is a promisor when it declares `promisor` as a true boolean or when
+// it declares a `partialCloneFilter`, which Git registers regardless of the
+// filter's value, and the repository is also a partial clone when it declares
+// the `partialClone` extension.
 //
 // The effective configuration is listed rather than the local scope alone.
 // `--local` does not expand a conditional include, and `--worktree` fails
@@ -235,6 +255,15 @@ func rejectPartialClone(ctx context.Context, target []string) error {
 		case strings.HasPrefix(key, remoteKeyPrefix) &&
 			strings.HasSuffix(key, promisorKeySuffix) &&
 			!isGitFalse(hasValue, string(value)):
+			return fmt.Errorf(
+				"%w: repository has a promisor remote (%s)",
+				ErrIncompleteRepository,
+				key,
+			)
+		// Git registers a promisor remote for a partial-clone filter whatever
+		// the filter says, so the key is rejected on presence alone.
+		case strings.HasPrefix(key, remoteKeyPrefix) &&
+			strings.HasSuffix(key, filterKeySuffix):
 			return fmt.Errorf(
 				"%w: repository has a promisor remote (%s)",
 				ErrIncompleteRepository,

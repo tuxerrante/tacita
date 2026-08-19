@@ -242,12 +242,14 @@ Preflight uses `rev-parse --is-shallow-repository` and
 files relative to the common directory, not a linked worktree's private Git
 directory. Reject a graft or alternate entry whose path is not a regular file
 rather than reading it, so a symlink, FIFO, or device cannot redirect or block
-the run, and bound every such read. Read promisor configuration only to reject
-the repository, from the effective local and worktree scopes rather than the
-local scope alone, because `includeIf` and worktree-scoped configuration
-otherwise hide it. Git normalizes configuration keys to lowercase, so match
-`extensions.partialclone` and `remote.<name>.promisor` case-insensitively. Any
-missing-object failure during traversal is `incomplete_repository`; the bounded
+the run, and bound every such read. Reject a file that exceeds that bound
+instead of judging it by the prefix that was read. Read promisor configuration
+only to reject the repository, from the effective local and worktree scopes
+rather than the local scope alone, because `includeIf` and worktree-scoped
+configuration otherwise hide it. Git normalizes configuration keys to lowercase,
+so match `extensions.partialclone`, `remote.<name>.promisor`, and
+`remote.<name>.partialclonefilter` case-insensitively. Any missing-object
+failure during traversal is `incomplete_repository`; the bounded
 run does not perform a full `git fsck`.
 
 The effective configuration is obtained with one bounded `config --list -z`
@@ -257,7 +259,9 @@ the worktree-config extension, so either would let a repository hide the keys
 being searched for. System and global configuration are already disabled through
 the child environment, which leaves the plain listing equal to the effective
 repository scopes. A key listed without a value is boolean true, which is how a
-promisor remote appears when written in its shorthand form.
+promisor remote appears when written in its shorthand form. A partial-clone
+filter is rejected on presence alone, because Git registers a promisor remote
+for it whatever the filter says, without requiring any promisor key.
 
 Preflight rejects known incompleteness mechanisms; it cannot prove that every
 required object is present. The frozen data flow omits `--root`, so the root

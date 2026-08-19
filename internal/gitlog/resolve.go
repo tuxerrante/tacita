@@ -20,8 +20,9 @@ const (
 // ResolveCommit resolves revision to a complete lowercase SHA-1 commit object
 // ID. The caller owns the elapsed-time deadline.
 //
-// Success does not validate repository completeness; history preflight must run
-// before traversal.
+// Open already rejected the repository-level mechanisms that make local history
+// incomplete. Success still does not prove that every object traversal needs is
+// present, which is classified while traversing.
 func (r *Repository) ResolveCommit(ctx context.Context, revision string) (string, error) {
 	if revision == "" {
 		return "", fmt.Errorf("%w: revision is empty", ErrInvalidInput)

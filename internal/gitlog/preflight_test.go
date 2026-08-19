@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -33,6 +34,9 @@ func TestOpenRejectsPartialClone(t *testing.T) {
 		{name: "promisor remote", key: "remote.origin.promisor", value: "true"},
 		{name: "mixed case remote", key: "remote.Upstream.promisor", value: "true"},
 		{name: "partial clone extension", key: "extensions.partialClone", value: "origin"},
+		// Git registers a promisor remote for a filter on its own, without any
+		// promisor key, so the filter has to be rejected on presence alone.
+		{name: "partial clone filter", key: "remote.origin.partialCloneFilter", value: "blob:none"},
 	}
 
 	for _, tt := range tests {
@@ -116,6 +120,19 @@ func TestOpenAcceptsEmptyHistoryOverrideFiles(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("ResolveCommit() = %q, want %q", got, want)
+	}
+}
+
+// TestOpenRejectsOversizedHistoryOverrideFiles covers a file that cannot be read
+// within the bound. Reading only a prefix would accept leading whitespace longer
+// than the limit while Git still reads the alternate that follows it.
+func TestOpenRejectsOversizedHistoryOverrideFiles(t *testing.T) {
+	repository, _ := newTestRepository(t)
+	padding := strings.Repeat("\n", maxOverrideFile)
+	writeOverrideFile(t, repository, alternatesFile, padding+"/elsewhere/objects\n")
+
+	if _, err := Open(t.Context(), repository); !errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("Open() error = %v, want ErrIncompleteRepository", err)
 	}
 }
 

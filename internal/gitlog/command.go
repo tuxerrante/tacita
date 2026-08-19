@@ -3,6 +3,7 @@ package gitlog
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"time"
@@ -14,28 +15,47 @@ const (
 	gitWaitDelay    = 2 * time.Second
 )
 
+// errOutputLimit stops the copy that feeds a limitedBuffer. It never reaches a
+// caller: runGit classifies an overflow from the buffer itself, which carries
+// the stream and the limit that were exceeded.
+var errOutputLimit = errors.New("git output limit exceeded")
+
+// limitedBuffer captures at most limit bytes of a stream and then fails the
+// write. Failing rather than discarding is what bounds the cost of a hostile
+// repository: os/exec closes its end of the pipe when the copy fails, and stop
+// tears the child down, so the run never pays for the whole overflow.
+//
+// The bytes captured before the limit are kept, so an over-long stderr still
+// diagnoses the failure.
 type limitedBuffer struct {
 	data     []byte
 	limit    int
 	exceeded bool
+	stop     func()
 }
 
-func newLimitedBuffer(limit int) *limitedBuffer {
+func newLimitedBuffer(limit int, stop func()) *limitedBuffer {
 	return &limitedBuffer{
 		data:  make([]byte, 0, min(limit, 1024)),
 		limit: limit,
+		stop:  stop,
 	}
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	remaining := b.limit - len(b.data)
+	if len(p) <= remaining {
+		b.data = append(b.data, p...)
+		return len(p), nil
+	}
+
 	if remaining > 0 {
-		b.data = append(b.data, p[:min(len(p), remaining)]...)
+		b.data = append(b.data, p[:remaining]...)
 	}
-	if len(p) > remaining {
-		b.exceeded = true
-	}
-	return len(p), nil
+	b.exceeded = true
+	b.stop()
+
+	return remaining, errOutputLimit
 }
 
 func (b *limitedBuffer) bytes() []byte {
@@ -52,10 +72,16 @@ func runGit(
 		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 
-	stdout := newLimitedBuffer(stdoutLimit)
-	stderr := newLimitedBuffer(maxGitStderr)
+	// The child is killed through a context Tacita owns, so an overflow can
+	// tear it down without the caller's context being cancelled, which keeps a
+	// self-inflicted stop distinguishable from the caller's deadline below.
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
 
-	cmd := exec.CommandContext(ctx, "git", args...)
+	stdout := newLimitedBuffer(stdoutLimit, stop)
+	stderr := newLimitedBuffer(maxGitStderr, stop)
+
+	cmd := exec.CommandContext(runCtx, "git", args...)
 	cmd.Env = gitEnvironment()
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

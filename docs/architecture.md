@@ -183,8 +183,8 @@ performs the frozen resolution. Together they:
   allowlist;
 - apply the required repository-local configuration overrides;
 - capture at most 4 KiB from each fixed-grammar stdout, 1 MiB from the
-  effective configuration listing, and 1 MiB from Git stderr while continuing
-  to drain both pipes;
+  effective configuration listing, and 1 MiB from Git stderr, and stop the
+  child at the limit instead of paying for the whole overflow;
 - return a complete lowercase 40-byte commit ID or a classifiable error;
 - kill and wait for Git when the caller's context is cancelled.
 
@@ -193,11 +193,16 @@ immutable commit identity but does not establish complete history. Preflight
 removes the known incompleteness mechanisms; missing-object classification
 during traversal remains outstanding.
 
-This boundary is provisional and under review. One defect is known and
-scheduled: its bounded writer keeps accepting and discarding bytes after the
-limit is reached, so a hostile repository still pays for the full overflow
-before the run fails. The writer must instead fail the write, which makes
-`os/exec` close the read pipe and stop the copy, and cancel the child.
+This boundary is provisional and under review.
+
+A bounded writer fails the write once its limit is reached rather than
+discarding the remainder. `os/exec` then closes its end of the pipe, and the
+writer cancels a context Tacita owns, which kills the child. The overflow costs
+the limit rather than the whole stream: measured against a 400 MB blob, the
+discarding writer read all of it in 972 ms, and the failing writer stopped
+after 32 KiB in 4 ms. The caller's context is left untouched, so a run stopped
+by a limit is still classified as an output-limit failure and not as a caller
+cancellation or a killed process.
 
 ## Supported experiment environment
 

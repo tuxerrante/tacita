@@ -50,6 +50,7 @@ Implemented:
   validated the environment and classified the repository target;
 - rejection of shallow, grafted, alternate-backed, and promisor repositories
   before any history command can run;
+- bounded Git output that stops the child at its limit;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
@@ -116,8 +117,8 @@ one is stacked on the previous:
 4. completed: reject shallow, grafted, alternate-backed, and promisor
    repositories before traversal, and carry that preflight result in the same
    value;
-5. make bounded-output overflow tear the child down instead of discarding the
-   overflow;
+5. completed: make bounded-output overflow tear the child down instead of
+   discarding the overflow;
 6. stream and validate `rev-list` first-parent event metadata;
 7. stream `diff-tree` records into normalized events and exclusion
    diagnostics.

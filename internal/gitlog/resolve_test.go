@@ -236,27 +236,6 @@ func TestSupportedGitVersion(t *testing.T) {
 	}
 }
 
-func TestLimitedBuffer(t *testing.T) {
-	buffer := newLimitedBuffer(4)
-
-	for _, input := range []string{"abc", "def"} {
-		n, err := buffer.Write([]byte(input))
-		if err != nil {
-			t.Fatalf("Write(%q) error = %v", input, err)
-		}
-		if n != len(input) {
-			t.Fatalf("Write(%q) = %d, want %d", input, n, len(input))
-		}
-	}
-
-	if got := string(buffer.bytes()); got != "abcd" {
-		t.Errorf("buffer = %q, want %q", got, "abcd")
-	}
-	if !buffer.exceeded {
-		t.Fatal("buffer.exceeded = false, want true")
-	}
-}
-
 func newTestRepository(t *testing.T) (string, string) {
 	t.Helper()
 

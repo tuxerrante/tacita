@@ -183,8 +183,8 @@ performs the frozen resolution. Together they:
   allowlist;
 - apply the required repository-local configuration overrides;
 - capture at most 4 KiB from each fixed-grammar stdout, 1 MiB from the
-  effective configuration listing, and 1 MiB from Git stderr, and stop the
-  child at the limit instead of paying for the whole overflow;
+  effective configuration listing, and 1 MiB from Git stderr;
+- stop the child at a stream limit instead of paying for the whole overflow;
 - return a complete lowercase 40-byte commit ID or a classifiable error;
 - kill and wait for Git when the caller's context is cancelled.
 

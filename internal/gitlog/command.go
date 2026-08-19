@@ -154,7 +154,6 @@ type boundedReader struct {
 
 func (b *boundedReader) Read(p []byte) (int, error) {
 	if b.exceeded {
-		b.exceeded = true
 		return 0, errOutputLimit
 	}
 	if len(p) > b.remaining+1 {

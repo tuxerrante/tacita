@@ -131,7 +131,8 @@ and then fixes the target arguments for the whole run:
 | Supplied path | Classification | Target arguments |
 | --- | --- | --- |
 | contains a `.git` directory or gitfile | worktree | `--git-dir=<path>/.git --work-tree=<path>` |
-| otherwise | bare | `--git-dir=<path>` |
+| contains `HEAD` | bare | `--git-dir=<path>` |
+| neither | rejected | none |
 
 A gitfile covers linked worktrees and submodule worktrees, so both keep working
 without a separate case. A symlinked repository path is accepted and resolved

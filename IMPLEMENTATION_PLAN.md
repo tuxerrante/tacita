@@ -52,7 +52,7 @@ Implemented:
 
 Not implemented:
 
-- explicit repository targeting and complete-repository preflight;
+- explicit repository targeting and rejection of known-incomplete repositories;
 - streaming `rev-list` and `diff-tree` history parsing;
 - transaction normalization or component projection;
 - mining, baselines, or temporal evaluation;
@@ -174,7 +174,8 @@ incomplete-history behavior.
 
 The first learning exercise should implement `ResolveCommit` under the frozen
 environment, history, error, and budget contracts. That exercise is complete;
-complete-repository preflight and history traversal remain in this milestone.
+rejecting known-incomplete repositories and history traversal remain in this
+milestone.
 
 ### 2. Descriptive miner
 

@@ -680,6 +680,12 @@ identity.
 Fuzz the NUL parser, path/status decoding, normalization, projection, and report
 decoding with deterministic seed cases.
 
+A fuzz target asserts a property, never merely the absence of a panic. Each one
+carries a seed for every rule it covers, so `go test` alone fails when a rule is
+removed and no mutation has to invent Git's exact keys. Where the decision worth
+fuzzing sits behind a subprocess or a file, the decision is a separate function
+over bytes or an `io.Reader`, while opening and running stay where they are.
+
 The repository gates are:
 
 ```text

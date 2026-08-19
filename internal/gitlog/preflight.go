@@ -168,21 +168,29 @@ func rejectHistoryOverride(mechanism string, path string) error {
 		return notRegularFile(mechanism, path)
 	}
 
+	return rejectOverrideContent(mechanism, path, file, maxOverrideFile)
+}
+
+// rejectOverrideContent decides whether an opened override file declares
+// anything. It is separated from opening the file because the decision is
+// algorithmic rather than filesystem specific, which makes it reachable from a
+// fuzz target without a filesystem.
+func rejectOverrideContent(mechanism string, path string, source io.Reader, limit int) error {
 	// One byte past the limit distinguishes a fully read file from a truncated
 	// one. Without it a file of leading whitespace longer than the limit would
 	// trim to empty and be accepted while Git still reads the entry that
 	// follows.
-	content, err := io.ReadAll(io.LimitReader(file, maxOverrideFile+1))
+	content, err := io.ReadAll(io.LimitReader(source, int64(limit)+1))
 	if err != nil {
 		return fmt.Errorf("reading %s file: %w", mechanism, err)
 	}
-	if len(content) > maxOverrideFile {
+	if len(content) > limit {
 		return fmt.Errorf(
 			"%w: %s file %q exceeds %d bytes",
 			ErrIncompleteRepository,
 			mechanism,
 			path,
-			maxOverrideFile,
+			limit,
 		)
 	}
 	if len(bytes.TrimSpace(content)) > 0 {
@@ -234,6 +242,16 @@ func rejectPartialClone(ctx context.Context, target []string) error {
 		return err
 	}
 
+	return rejectPartialCloneConfig(output)
+}
+
+// rejectPartialCloneConfig decides whether a repository's own configuration
+// registers a promisor remote. It is separated from running Git because the
+// framing is repository controlled and worth fuzzing on its own.
+//
+// `config --list -z` frames every entry as `key\nvalue\0`. A key listed with no
+// newline has no value, which Git reads as boolean true.
+func rejectPartialCloneConfig(output []byte) error {
 	for entry := range bytes.SplitSeq(output, []byte{0}) {
 		if len(entry) == 0 {
 			continue

@@ -188,6 +188,11 @@ func FuzzParseFirstParentEvents(f *testing.F) {
 	f.Fuzz(func(t *testing.T, input string) {
 		events, err := parseFirstParentEvents(strings.NewReader(input), maxIntegrationEvents)
 		if err != nil {
+			// Every rejection speaks the boundary's vocabulary. An error that
+			// escapes untyped would reach the CLI as an unexplained failure.
+			if !errors.Is(err, ErrMalformedGitOutput) && !errors.Is(err, ErrEventLimit) {
+				t.Fatalf("rejected input with an unclassified error: %v", err)
+			}
 			return
 		}
 		if len(events) == 0 {
@@ -195,6 +200,13 @@ func FuzzParseFirstParentEvents(f *testing.F) {
 		}
 		if events[0].Kind != RootEvent {
 			t.Errorf("accepted a chain starting with %s", events[0].Kind)
+		}
+		// Linkage is validated while parsing and not retained, so what stays
+		// observable is that the chain holds exactly one root.
+		for i, event := range events[1:] {
+			if event.Kind == RootEvent {
+				t.Fatalf("event %d is a second root", i+1)
+			}
 		}
 	})
 }

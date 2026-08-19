@@ -1,6 +1,7 @@
 package gitlog
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -267,4 +268,98 @@ func writeOverrideFile(t *testing.T, repository string, relative string, content
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("writing override file: %v", err)
 	}
+}
+
+// FuzzRejectPartialCloneConfig asserts more than the absence of a panic. A
+// promisor-registering entry planted at a valid entry boundary must always be
+// rejected, so a scan that stopped recognizing one of Git's three registration
+// mechanisms fails here even though the corrupted prefix around it is arbitrary.
+func FuzzRejectPartialCloneConfig(f *testing.F) {
+	// Every entry registers a promisor remote, so the scan must reject each one
+	// wherever it appears. Case is varied because Git lowercases the section and
+	// the key but preserves a subsection.
+	registering := []string{
+		"extensions.partialclone\norigin",
+		"extensions.partialClone\norigin",
+		"remote.origin.promisor",
+		"remote.origin.promisor\ntrue",
+		"remote.UPPER.promisor\nyes",
+		// The filter alone registers the remote, whatever the filter says.
+		"remote.origin.partialclonefilter\nblob:none",
+		"remote.origin.partialclonefilter",
+		"remote.origin.partialclonefilter\nfalse",
+		"remote.origin.partialCloneFilter\n0",
+	}
+	// One seed per registration mechanism, so `go test` alone exercises every
+	// one of them without waiting for a mutation to invent Git's exact keys.
+	for entry := range registering {
+		f.Add([]byte("core.bare\ntrue\x00"), entry, entry)
+		f.Add([]byte("remote.origin.url\nhttps://example.invalid\x00"), entry, 0)
+		f.Add([]byte("remote.origin.promisor\nfalse\x00"), entry, 0)
+		f.Add([]byte(""), entry, 0)
+	}
+
+	f.Fuzz(func(t *testing.T, prefix []byte, entry int, suffix int) {
+		if entry < 0 || suffix < 0 {
+			t.Skip("negative index")
+		}
+		planted := registering[entry%len(registering)]
+
+		// The prefix is truncated at its last terminator so the planted entry
+		// starts on a real boundary. Arbitrary bytes inside a value must never
+		// count as a key, which is why the raw bytes alone are not the oracle.
+		framed := prefix
+		if cut := bytes.LastIndexByte(framed, 0); cut >= 0 {
+			framed = framed[:cut+1]
+		} else {
+			framed = nil
+		}
+
+		stream := append([]byte{}, framed...)
+		stream = append(stream, planted...)
+		stream = append(stream, 0)
+		stream = append(stream, registering[suffix%len(registering)]...)
+		stream = append(stream, 0)
+
+		err := rejectPartialCloneConfig(stream)
+
+		if !errors.Is(err, ErrIncompleteRepository) {
+			t.Fatalf("rejectPartialCloneConfig() with %q planted error = %v, want ErrIncompleteRepository", planted, err)
+		}
+	})
+}
+
+// FuzzRejectOverrideContent pins the two decisions the bounded read makes: a
+// file that could not be read whole is rejected whatever it seems to contain,
+// and a file read whole is rejected exactly when it holds a non-space byte.
+func FuzzRejectOverrideContent(f *testing.F) {
+	f.Add([]byte(""), 8)
+	f.Add([]byte("   \n\t "), 8)
+	f.Add([]byte("../objects\n"), 8)
+	// The historical defect: leading whitespace past the limit trimmed to empty
+	// and was accepted while Git still read the entry that followed.
+	f.Add(append(bytes.Repeat([]byte(" "), 9), []byte("../objects\n")...), 8)
+
+	f.Fuzz(func(t *testing.T, content []byte, limit int) {
+		if limit < 0 || limit > 1<<20 {
+			t.Skip("limit outside the tested range")
+		}
+
+		err := rejectOverrideContent("alternates", "objects/info/alternates", bytes.NewReader(content), limit)
+
+		switch {
+		case len(content) > limit:
+			if !errors.Is(err, ErrIncompleteRepository) {
+				t.Fatalf("rejectOverrideContent() over the limit error = %v, want ErrIncompleteRepository", err)
+			}
+		case len(bytes.TrimSpace(content)) > 0:
+			if !errors.Is(err, ErrIncompleteRepository) {
+				t.Fatalf("rejectOverrideContent() with a declaration error = %v, want ErrIncompleteRepository", err)
+			}
+		default:
+			if err != nil {
+				t.Fatalf("rejectOverrideContent() with blank content error = %v, want nil", err)
+			}
+		}
+	})
 }

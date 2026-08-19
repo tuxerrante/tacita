@@ -1,9 +1,10 @@
 name: CI
 
 on:
+  # Deliberately unfiltered: a stacked pull request may target its parent topic
+  # branch rather than main, and CONTRIBUTING.md requires every layer to pass
+  # its own gate.
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main

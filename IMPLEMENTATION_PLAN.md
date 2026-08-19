@@ -109,11 +109,11 @@ one is stacked on the previous:
 2. completed: target the repository explicitly so Git cannot discover an
    ancestor repository, per
    [repository targeting](docs/architecture.md#repository-targeting);
-3. completed: carry the classified target and preflight result in a run-scoped
-   repository value, so object access cannot precede validation, per
+3. completed: carry the classified target and validated environment in a
+   run-scoped repository value, so object access cannot precede validation, per
    [package boundaries](docs/architecture.md#package-boundaries);
 4. reject shallow, grafted, alternate-backed, and promisor repositories before
-   traversal;
+   traversal, and carry that preflight result in the same value;
 5. make bounded-output overflow tear the child down instead of discarding the
    overflow;
 6. stream and validate `rev-list` first-parent event metadata;

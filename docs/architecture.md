@@ -175,13 +175,13 @@ value whose `ResolveCommit` method performs the frozen resolution. Together they
 - refuse to run Git at all through a repository value the constructor did not
   produce, and bind the repository path before any later working-directory
   change can redirect it;
-- executes `git version`, `rev-parse --show-object-format`, and the frozen
+- execute `git version`, `rev-parse --show-object-format`, and the frozen
   resolution command with a fixed environment allowlist;
-- applies the required repository-local configuration overrides;
-- captures at most 4 KiB from each fixed-grammar stdout and 1 MiB from Git
+- apply the required repository-local configuration overrides;
+- capture at most 4 KiB from each fixed-grammar stdout and 1 MiB from Git
   stderr while continuing to drain both pipes;
-- returns a complete lowercase 40-byte commit ID or a classifiable error;
-- kills and waits for Git when the caller's context is cancelled.
+- return a complete lowercase 40-byte commit ID or a classifiable error;
+- kill and wait for Git when the caller's context is cancelled.
 
 The caller owns the elapsed-time deadline. Successful resolution establishes an
 immutable commit identity but does not establish complete history. Shallow,

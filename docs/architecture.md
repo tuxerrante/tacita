@@ -164,8 +164,9 @@ read objects and never touch the working tree.
 ### Implemented scalar Git boundary
 
 `internal/gitlog.Open` implements the first Milestone 1 boundary. It validates
-the environment, classifies the repository target, and returns the run-scoped
-value whose `ResolveCommit` method performs the frozen resolution. Together they:
+the environment, classifies the repository target, runs the completeness
+preflight, and returns the run-scoped value whose `ResolveCommit` method
+performs the frozen resolution. Together they:
 
 - reject empty inputs, unsupported platforms, Git older than 2.43, and
   non-SHA-1 repositories;
@@ -175,18 +176,22 @@ value whose `ResolveCommit` method performs the frozen resolution. Together they
 - refuse to run Git at all through a repository value the constructor did not
   produce, and bind the repository path before any later working-directory
   change can redirect it;
-- execute `git version`, `rev-parse --show-object-format`, and the frozen
-  resolution command with a fixed environment allowlist;
+- reject shallow repositories, non-empty grafts and object alternates, and
+  promisor or partial-clone configuration before any history command can run;
+- execute `git version`, `rev-parse --show-object-format`, the preflight
+  queries, and the frozen resolution command with a fixed environment
+  allowlist;
 - apply the required repository-local configuration overrides;
-- capture at most 4 KiB from each fixed-grammar stdout and 1 MiB from Git
-  stderr while continuing to drain both pipes;
+- capture at most 4 KiB from each fixed-grammar stdout, 1 MiB from the
+  effective configuration listing, and 1 MiB from Git stderr while continuing
+  to drain both pipes;
 - return a complete lowercase 40-byte commit ID or a classifiable error;
 - kill and wait for Git when the caller's context is cancelled.
 
 The caller owns the elapsed-time deadline. Successful resolution establishes an
-immutable commit identity but does not establish complete history. Shallow,
-graft, alternates, promisor, and missing-object checks remain mandatory before
-the ID reaches history traversal.
+immutable commit identity but does not establish complete history. Preflight
+removes the known incompleteness mechanisms; missing-object classification
+during traversal remains outstanding.
 
 This boundary is provisional and under review. One defect is known and
 scheduled: its bounded writer keeps accepting and discarding bytes after the
@@ -237,13 +242,26 @@ Preflight uses `rev-parse --is-shallow-repository` and
 files relative to the common directory, not a linked worktree's private Git
 directory. Reject a graft or alternate entry whose path is not a regular file
 rather than reading it, so a symlink, FIFO, or device cannot redirect or block
-the run, and bound every such read. Read promisor configuration only to reject
-the repository, from the effective local and worktree scopes rather than the
-local scope alone, because `includeIf` and worktree-scoped configuration
-otherwise hide it. Git normalizes configuration keys to lowercase, so match
-`extensions.partialclone` and `remote.<name>.promisor` case-insensitively. Any
-missing-object failure during traversal is `incomplete_repository`; the bounded
+the run, and bound every such read. Reject a file that exceeds that bound
+instead of judging it by the prefix that was read. Read promisor configuration
+only to reject the repository, from the effective local and worktree scopes
+rather than the local scope alone, because `includeIf` and worktree-scoped
+configuration otherwise hide it. Git normalizes configuration keys to lowercase,
+so match `extensions.partialclone`, `remote.<name>.promisor`, and
+`remote.<name>.partialclonefilter` case-insensitively. Any missing-object
+failure during traversal is `incomplete_repository`; the bounded
 run does not perform a full `git fsck`.
+
+The effective configuration is obtained with one bounded `config --list -z`
+rather than a scope-restricted listing. `--local` does not expand a conditional
+include, and `--worktree` fails outright once a linked worktree exists without
+the worktree-config extension, so either would let a repository hide the keys
+being searched for. System and global configuration are already disabled through
+the child environment, which leaves the plain listing equal to the effective
+repository scopes. A key listed without a value is boolean true, which is how a
+promisor remote appears when written in its shorthand form. A partial-clone
+filter is rejected on presence alone, because Git registers a promisor remote
+for it whatever the filter says, without requiring any promisor key.
 
 Preflight rejects known incompleteness mechanisms; it cannot prove that every
 required object is present. The frozen data flow omits `--root`, so the root

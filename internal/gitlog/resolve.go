@@ -20,8 +20,9 @@ const (
 // ResolveCommit resolves revision to a complete lowercase SHA-1 commit object
 // ID. The caller owns the elapsed-time deadline.
 //
-// Success does not validate repository completeness; history preflight must run
-// before traversal.
+// Open already rejected the repository-level mechanisms that make local history
+// incomplete. Success still does not prove that every object traversal needs is
+// present, which is classified while traversing.
 func (r *Repository) ResolveCommit(ctx context.Context, revision string) (string, error) {
 	if revision == "" {
 		return "", fmt.Errorf("%w: revision is empty", ErrInvalidInput)
@@ -30,6 +31,7 @@ func (r *Repository) ResolveCommit(ctx context.Context, revision string) (string
 	output, err := r.runScalar(
 		ctx,
 		"resolving commit",
+		maxScalarOutput,
 		"rev-parse",
 		"--verify",
 		"--end-of-options",
@@ -124,11 +126,12 @@ func supportedGitVersion(major int, minor int) bool {
 // validateObjectFormat runs against the already classified target because the
 // Repository is not constructed until every check has passed.
 func validateObjectFormat(ctx context.Context, target []string) error {
-	output, err := runGit(
+	output, err := runTargeted(
 		ctx,
+		target,
 		"checking Git object format",
 		maxScalarOutput,
-		gitArgs(target, "rev-parse", "--show-object-format")...,
+		"rev-parse", "--show-object-format",
 	)
 	if err != nil {
 		return err

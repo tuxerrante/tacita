@@ -16,18 +16,19 @@ import (
 // run. It is not a reusable long-lived handle and holds no operating system
 // resource, so there is nothing to close.
 //
-// Open validates containment, platform, Git version, and object format. It does
-// not validate repository completeness; missing objects are classified during
-// traversal.
+// Open validates containment, platform, Git version, object format, and the
+// repository-level completeness mechanisms. It cannot prove that every required
+// object is present, so a missing object is still classified during traversal.
 type Repository struct {
-	path   string
-	target []string
-	ready  bool
+	path      string
+	target    []string
+	preflight preflight
+	ready     bool
 }
 
 // Open validates the execution environment, classifies path as a worktree or a
-// bare repository, and returns a Repository bound to it. The caller owns the
-// elapsed-time deadline.
+// bare repository, rejects the known incompleteness mechanisms, and returns a
+// Repository bound to it. The caller owns the elapsed-time deadline.
 //
 // path is resolved to an absolute path first, before any subprocess runs, so a
 // later working-directory change cannot redirect the run to a repository that
@@ -55,7 +56,17 @@ func Open(ctx context.Context, path string) (*Repository, error) {
 		return nil, err
 	}
 
-	return &Repository{path: absolute, target: target, ready: true}, nil
+	result, err := inspectRepository(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Repository{
+		path:      absolute,
+		target:    target,
+		preflight: result,
+		ready:     true,
+	}, nil
 }
 
 // bind prepends the classified target and the deterministic configuration
@@ -82,13 +93,27 @@ func (r *Repository) bind(args ...string) ([]string, error) {
 func (r *Repository) runScalar(
 	ctx context.Context,
 	operation string,
+	limit int,
 	args ...string,
 ) ([]byte, error) {
 	bound, err := r.bind(args...)
 	if err != nil {
 		return nil, err
 	}
-	return runGit(ctx, operation, maxScalarOutput, bound...)
+	return runGit(ctx, operation, limit, bound...)
+}
+
+// runTargeted runs a bounded Git command against an already classified target.
+// It exists for the checks that run while the Repository is still being
+// constructed and therefore cannot use a method on it.
+func runTargeted(
+	ctx context.Context,
+	target []string,
+	operation string,
+	limit int,
+	args ...string,
+) ([]byte, error) {
+	return runGit(ctx, operation, limit, gitArgs(target, args...)...)
 }
 
 // validateEnvironment checks the process-wide properties that no repository can

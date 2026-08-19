@@ -172,6 +172,10 @@ type changeDecoder struct {
 
 	diagnostics Diagnostics
 
+	// header is reused across records so decoding a repository with millions of
+	// changed paths does not allocate once per record.
+	header [recordHeaderLength]byte
+
 	open      bool
 	current   Event
 	seen      map[string]struct{}
@@ -265,12 +269,11 @@ func (d *changeDecoder) readBoundary(reader *bufio.Reader) error {
 
 // readRecord decodes one raw record and folds its path into the open event.
 func (d *changeDecoder) readRecord(reader *bufio.Reader) error {
-	header := make([]byte, recordHeaderLength)
-	if _, err := io.ReadFull(reader, header); err != nil {
+	if _, err := io.ReadFull(reader, d.header[:]); err != nil {
 		return fmt.Errorf("%w: change record ended mid-header: %w", errTruncatedStream, err)
 	}
 
-	gitlink, err := parseRecordHeader(header)
+	gitlink, err := parseRecordHeader(d.header[:])
 	if err != nil {
 		return err
 	}

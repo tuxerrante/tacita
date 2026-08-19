@@ -481,6 +481,12 @@ Therefore, when a budget or grammar failure stops parsing early, cancel the
 child's context, drain stdout to EOF, wait, and only then return the saved
 failure. The original context's failure, if any, wins over the parser's.
 
+The drain runs whether or not parsing failed, since a parser that stopped early
+without failing blocks Git just as effectively. Output the parser never read
+still counts against the byte budget, so the drain runs through the bounded
+reader before it reaches EOF on the raw pipe; otherwise a parser that succeeded
+early would let a repository produce unbounded output for free.
+
 A per-event exclusion is not a stop condition. Excluded events are consumed and
 counted, and parsing continues; only global exhaustion and malformed input end
 the stream.

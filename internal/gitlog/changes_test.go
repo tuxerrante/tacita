@@ -152,10 +152,15 @@ func TestDecodeRejectsDesynchronizedStreams(t *testing.T) {
 		{ID: mustObjectID(t, second), Kind: SingleParentEvent},
 	}
 
+	// RootEvent is EventKind's zero value, so the guard that rejects a record
+	// before every boundary and the guard that rejects a change on the root
+	// event both fire on the same zero-value event. The message is asserted so
+	// removing either one is still visible.
 	tests := []struct {
-		name  string
-		input string
-		err   error
+		name    string
+		input   string
+		err     error
+		message string
 	}{
 		{
 			name:  "unexpected boundary",
@@ -173,14 +178,16 @@ func TestDecodeRejectsDesynchronizedStreams(t *testing.T) {
 			err:   errTruncatedStream,
 		},
 		{
-			name:  "record before every boundary",
-			input: record,
-			err:   ErrMalformedGitOutput,
+			name:    "record before every boundary",
+			input:   record + first + "\x00" + second + "\x00",
+			err:     ErrMalformedGitOutput,
+			message: "precedes every boundary",
 		},
 		{
-			name:  "change on the root event",
-			input: first + "\x00" + record,
-			err:   ErrMalformedGitOutput,
+			name:    "change on the root event",
+			input:   first + "\x00" + record + second + "\x00",
+			err:     ErrMalformedGitOutput,
+			message: "root integration event",
 		},
 		{
 			name:  "unterminated boundary",
@@ -213,6 +220,9 @@ func TestDecodeRejectsDesynchronizedStreams(t *testing.T) {
 
 			if !errors.Is(err, tt.err) {
 				t.Fatalf("decode() error = %v, want %v", err, tt.err)
+			}
+			if tt.message != "" && !strings.Contains(err.Error(), tt.message) {
+				t.Errorf("decode() error = %v, want it to mention %q", err, tt.message)
 			}
 		})
 	}

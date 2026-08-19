@@ -65,11 +65,9 @@ Not implemented:
 - proposal, ratification, manifests, or checking.
 
 The current CLI is disposable. Its shape may change when the first real command
-contract is frozen. The implemented Git boundary is likewise provisional: a
-pre-implementation review found a repository-discovery escape, now fixed, and a
-bounded writer that discards overflow instead of stopping the child, which is
-still scheduled below and recorded in
-[`docs/architecture.md`](docs/architecture.md#repository-targeting).
+contract is frozen. The implemented Git boundary is likewise provisional and
+still under review; each review pass so far has found and fixed a defect,
+recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
 ## Frozen Milestone 0 decisions
 

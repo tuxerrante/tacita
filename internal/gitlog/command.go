@@ -23,7 +23,8 @@ var errOutputLimit = errors.New("git output limit exceeded")
 // limitedBuffer captures at most limit bytes of a stream and then fails the
 // write. Failing rather than discarding is what bounds the cost of a hostile
 // repository: os/exec closes its end of the pipe when the copy fails, and stop
-// tears the child down, so the run never pays for the whole overflow.
+// tears the child down, so the run pays for the copy buffer that crossed the
+// limit rather than for the whole overflow.
 //
 // The bytes captured before the limit are kept, so an over-long stderr still
 // diagnoses the failure.

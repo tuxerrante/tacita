@@ -197,12 +197,15 @@ This boundary is provisional and under review.
 
 A bounded writer fails the write once its limit is reached rather than
 discarding the remainder. `os/exec` then closes its end of the pipe, and the
-writer cancels a context Tacita owns, which kills the child. The overflow costs
-the limit rather than the whole stream: measured against a 400 MB blob, the
-discarding writer read all of it in 972 ms, and the failing writer stopped
-after 32 KiB in 4 ms. The caller's context is left untouched, so a run stopped
-by a limit is still classified as an output-limit failure and not as a caller
-cancellation or a killed process.
+writer cancels a context Tacita owns, which kills the child. Retained bytes are
+bounded by the limit, and the child is torn down on the first copied chunk that
+crosses it, so the overflow costs one copy buffer rather than the whole stream:
+measured against a 400 MB blob, the discarding writer read all of it in 972 ms,
+and the failing writer stopped after one 32 KiB chunk in 4 ms.
+
+The caller's context is left untouched, so a run stopped by a limit is still
+classified as an output-limit failure and not as a caller cancellation or a
+killed process.
 
 ## Supported experiment environment
 

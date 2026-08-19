@@ -51,13 +51,14 @@ Implemented:
 - rejection of shallow, grafted, alternate-backed, and promisor repositories
   before any history command can run;
 - bounded Git output that stops the child at its limit;
+- streamed first-parent event metadata, validated as a chain while it is read;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- streaming `rev-list` and `diff-tree` history parsing;
+- streaming `diff-tree` history parsing;
 - transaction normalization or component projection;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
@@ -117,7 +118,7 @@ one is stacked on the previous:
    value;
 5. completed: make bounded-output overflow tear the child down instead of
    discarding the overflow;
-6. stream and validate `rev-list` first-parent event metadata;
+6. completed: stream and validate `rev-list` first-parent event metadata;
 7. stream `diff-tree` records into normalized events and exclusion
    diagnostics.
 

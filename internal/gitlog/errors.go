@@ -29,6 +29,16 @@ var (
 	ErrGitFailure = errors.New("git command failed")
 	// ErrGitOutputLimit identifies bounded Git output that exceeded its operation limit.
 	ErrGitOutputLimit = errors.New("git output limit exceeded")
+	// ErrEventLimit identifies history larger than the frozen scan budget.
+	ErrEventLimit = errors.New("integration event limit exceeded")
+
+	// errEndOfStream marks the one position where a streamed grammar may end.
+	// It never reaches a caller.
+	errEndOfStream = errors.New("gitlog: end of stream")
+	// errTruncatedStream marks output that stopped mid-record. It is reported
+	// only when Git itself exited successfully, because a Git failure explains
+	// the truncation better than the grammar does.
+	errTruncatedStream = fmt.Errorf("%w: truncated stream", ErrMalformedGitOutput)
 
 	// errUninitializedRepository identifies a Repository that Open did not
 	// produce. It is a caller defect rather than invalid input, so it is not
@@ -76,4 +86,19 @@ func (e *OutputLimitError) Error() string {
 
 func (e *OutputLimitError) Is(target error) bool {
 	return target == ErrGitOutputLimit
+}
+
+// EventLimitError reports history larger than the frozen scan budget. The run
+// fails rather than analyzing a prefix of the chain, which would silently change
+// what the report describes.
+type EventLimitError struct {
+	Limit int
+}
+
+func (e *EventLimitError) Error() string {
+	return fmt.Sprintf("first-parent chain exceeds %d integration events", e.Limit)
+}
+
+func (e *EventLimitError) Is(target error) bool {
+	return target == ErrEventLimit
 }

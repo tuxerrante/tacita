@@ -193,6 +193,27 @@ immutable commit identity but does not establish complete history. Preflight
 removes the known incompleteness mechanisms; missing-object classification
 during traversal remains outstanding.
 
+`FirstParentEvents` implements the first streamed boundary. It runs the frozen
+`rev-list` command and returns one event per first-parent commit, root first,
+carrying each event's object ID and whether it is the root, an ordinary commit,
+or a merge result.
+
+Its parser reads one object ID at a time and never holds a line, so an octopus
+merge that prints every parent on one line costs the same as a root line. It
+validates the chain while reading it: the first event is the chain's root, and
+every later event names its predecessor as its first parent, so a stream that
+skipped or reordered an event fails instead of producing a chain that never
+existed. Events are retained as 41-byte values rather than strings, which keeps
+the frozen 200,000-event cap under 8 MiB.
+
+The `rev-list` command carries no `--end-of-options`, so its revision argument
+is validated as a complete lowercase object ID before the command runs.
+
+Total streamed bytes are bounded by the execution layer rather than the parser,
+which bounds only memory. Reaching the byte budget stops the child, and the
+resulting truncation is reported as an output limit rather than as the killed
+process or the malformed stream it also produces.
+
 This boundary is provisional and under review.
 
 A bounded writer fails the write once its limit is reached rather than

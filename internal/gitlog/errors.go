@@ -20,6 +20,9 @@ var (
 	ErrUnsupportedGitVersion = errors.New("unsupported Git version")
 	// ErrUnsupportedObjectFormat identifies a repository that does not use SHA-1.
 	ErrUnsupportedObjectFormat = errors.New("unsupported object format")
+	// ErrIncompleteRepository identifies a repository whose local objects are
+	// known to be incomplete, or that would fetch objects during traversal.
+	ErrIncompleteRepository = errors.New("incomplete repository")
 	// ErrMalformedGitOutput identifies output that violates a command's fixed grammar.
 	ErrMalformedGitOutput = errors.New("malformed Git output")
 	// ErrGitFailure identifies a Git process that could not start or exited unsuccessfully.

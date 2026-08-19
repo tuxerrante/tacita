@@ -48,13 +48,14 @@ Implemented:
 - bounded, isolated revision resolution to a full commit object ID;
 - a run-scoped repository value that fails closed unless its constructor
   validated the environment and classified the repository target;
+- rejection of shallow, grafted, alternate-backed, and promisor repositories
+  before any history command can run;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- rejection of known-incomplete repositories;
 - streaming `rev-list` and `diff-tree` history parsing;
 - transaction normalization or component projection;
 - mining, baselines, or temporal evaluation;
@@ -112,8 +113,9 @@ one is stacked on the previous:
 3. completed: carry the classified target and validated environment in a
    run-scoped repository value, so object access cannot precede validation, per
    [package boundaries](docs/architecture.md#package-boundaries);
-4. reject shallow, grafted, alternate-backed, and promisor repositories before
-   traversal, and carry that preflight result in the same value;
+4. completed: reject shallow, grafted, alternate-backed, and promisor
+   repositories before traversal, and carry that preflight result in the same
+   value;
 5. make bounded-output overflow tear the child down instead of discarding the
    overflow;
 6. stream and validate `rev-list` first-parent event metadata;

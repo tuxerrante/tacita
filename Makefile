@@ -95,12 +95,20 @@ test-race: ## Run tests with the race detector
 	go test -race -shuffle=on ./...
 
 fuzz: ## Run every fuzz target against the mutation engine for FUZZTIME
-	@for package in $$(go list ./...); do \
-		for target in $$(go test -list '^Fuzz' "$$package" | grep '^Fuzz'); do \
+	@fuzzed=0; \
+	packages="$$(go list ./...)" || exit 1; \
+	for package in $$packages; do \
+		listing="$$(go test -list '^Fuzz' "$$package")" || exit 1; \
+		for target in $$(echo "$$listing" | grep '^Fuzz'); do \
 			echo "Fuzzing $$target in $$package for $(FUZZTIME)"; \
 			go test "$$package" -run '^$$' -fuzz "^$$target\$$" -fuzztime "$(FUZZTIME)" || exit 1; \
+			fuzzed=$$((fuzzed + 1)); \
 		done; \
-	done
+	done; \
+	if [[ "$$fuzzed" -eq 0 ]]; then \
+		echo "No fuzz target was found, so nothing was fuzzed" >&2; \
+		exit 1; \
+	fi
 
 coverage: ## Enforce the minimum test coverage
 	go test -race -covermode=atomic -coverprofile="$(COVERAGE_FILE)" ./...

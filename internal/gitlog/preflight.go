@@ -25,9 +25,9 @@ const (
 	maxOverrideFile = 64 << 10
 
 	// asciiWhitespace is what Git skips when it reads a graft or alternates
-	// file. Go's unicode notion of space is wider, and every byte outside this
+	// file. Go's Unicode notion of space is wider, and every byte outside this
 	// set is a path byte Git will use, so trimming by it would read a file
-	// declaring a non-breaking space as if it declared nothing.
+	// declaring a no-break space as if it declared nothing.
 	asciiWhitespace = " \t\r\n\v\f"
 
 	graftsFile     = "info/grafts"

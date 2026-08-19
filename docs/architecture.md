@@ -85,6 +85,25 @@ preflight — not to cache work; one run resolves one tip, so avoiding a repeate
 version check would not justify it. Its lifetime is one analysis run. It is a
 concrete type, not an interface, and it is not a reusable long-lived handle.
 
+Go cannot prevent a caller from writing the zero value of an exported struct, so
+the invariant is enforced by failing closed rather than by construction alone.
+Every Git invocation passes through one binding step that rejects a repository
+the constructor did not produce. That guard is not defensive noise: an
+unvalidated value carries no target, and Git without an explicit target falls
+back to discovery from the process working directory, which is the containment
+failure [repository targeting](#repository-targeting) removes.
+
+For the same reason the constructor resolves the supplied path to an absolute
+path first, before any subprocess runs. A relative path names a different
+directory after the process changes working directory, so a run could otherwise
+continue against a repository that never passed classification, object-format
+validation, or preflight. The path is not canonicalized further: symlinks stay
+kernel-resolved, as they are for the target arguments.
+
+The constructor validates containment, platform, Git version, and object
+format. It does not validate repository completeness; missing objects are
+classified during traversal.
+
 ## Git process boundary
 
 The analyzed repository is untrusted input. Git invocation must:
@@ -144,20 +163,25 @@ read objects and never touch the working tree.
 
 ### Implemented scalar Git boundary
 
-`internal/gitlog.ResolveCommit` implements the first Milestone 1 boundary. It:
+`internal/gitlog.Open` implements the first Milestone 1 boundary. It validates
+the environment, classifies the repository target, and returns the run-scoped
+value whose `ResolveCommit` method performs the frozen resolution. Together they:
 
-- rejects empty inputs, unsupported platforms, Git older than 2.43, and
+- reject empty inputs, unsupported platforms, Git older than 2.43, and
   non-SHA-1 repositories;
-- binds every repository command to an explicit Git directory, so a path that
+- bind every repository command to an explicit Git directory, so a path that
   is neither a worktree nor a bare repository is rejected instead of resolving
   an ancestor repository;
-- executes `git version`, `rev-parse --show-object-format`, and the frozen
+- refuse to run Git at all through a repository value the constructor did not
+  produce, and bind the repository path before any later working-directory
+  change can redirect it;
+- execute `git version`, `rev-parse --show-object-format`, and the frozen
   resolution command with a fixed environment allowlist;
-- applies the required repository-local configuration overrides;
-- captures at most 4 KiB from each fixed-grammar stdout and 1 MiB from Git
+- apply the required repository-local configuration overrides;
+- capture at most 4 KiB from each fixed-grammar stdout and 1 MiB from Git
   stderr while continuing to drain both pipes;
-- returns a complete lowercase 40-byte commit ID or a classifiable error;
-- kills and waits for Git when the caller's context is cancelled.
+- return a complete lowercase 40-byte commit ID or a classifiable error;
+- kill and wait for Git when the caller's context is cancelled.
 
 The caller owns the elapsed-time deadline. Successful resolution establishes an
 immutable commit identity but does not establish complete history. Shallow,

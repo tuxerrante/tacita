@@ -3,7 +3,6 @@ package gitlog
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strconv"
 	"strings"
 )
@@ -18,48 +17,23 @@ const (
 	sha1HexLength         = 40
 )
 
-// ResolveCommit validates the platform, Git version, and object format, then
-// resolves revision to a complete lowercase SHA-1 commit object ID. The caller
-// owns the elapsed-time deadline. Success does not validate repository
-// completeness; history preflight must run before traversal.
-func ResolveCommit(
-	ctx context.Context,
-	repository string,
-	revision string,
-) (string, error) {
-	if repository == "" {
-		return "", fmt.Errorf("%w: repository path is empty", ErrInvalidInput)
-	}
+// ResolveCommit resolves revision to a complete lowercase SHA-1 commit object
+// ID. The caller owns the elapsed-time deadline.
+//
+// Success does not validate repository completeness; history preflight must run
+// before traversal.
+func (r *Repository) ResolveCommit(ctx context.Context, revision string) (string, error) {
 	if revision == "" {
 		return "", fmt.Errorf("%w: revision is empty", ErrInvalidInput)
 	}
 
-	if err := validatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
-		return "", err
-	}
-	if err := validateGitVersion(ctx); err != nil {
-		return "", err
-	}
-	if err := validateObjectFormat(ctx, repository); err != nil {
-		return "", err
-	}
-
-	resolveArgs, err := repositoryGitArgs(
-		repository,
+	output, err := r.runScalar(
+		ctx,
+		"resolving commit",
 		"rev-parse",
 		"--verify",
 		"--end-of-options",
 		revision+"^{commit}",
-	)
-	if err != nil {
-		return "", err
-	}
-
-	output, err := runGit(
-		ctx,
-		"resolving commit",
-		maxScalarOutput,
-		resolveArgs...,
 	)
 	if err != nil {
 		return "", err
@@ -147,13 +121,15 @@ func supportedGitVersion(major int, minor int) bool {
 		(major == minimumGitMajor && minor >= minimumGitMinor)
 }
 
-func validateObjectFormat(ctx context.Context, repository string) error {
-	args, err := repositoryGitArgs(repository, "rev-parse", "--show-object-format")
-	if err != nil {
-		return err
-	}
-
-	output, err := runGit(ctx, "checking Git object format", maxScalarOutput, args...)
+// validateObjectFormat runs against the already classified target because the
+// Repository is not constructed until every check has passed.
+func validateObjectFormat(ctx context.Context, target []string) error {
+	output, err := runGit(
+		ctx,
+		"checking Git object format",
+		maxScalarOutput,
+		gitArgs(target, "rev-parse", "--show-object-format")...,
+	)
 	if err != nil {
 		return err
 	}

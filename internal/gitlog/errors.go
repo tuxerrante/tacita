@@ -26,6 +26,13 @@ var (
 	ErrGitFailure = errors.New("git command failed")
 	// ErrGitOutputLimit identifies bounded Git output that exceeded its operation limit.
 	ErrGitOutputLimit = errors.New("git output limit exceeded")
+
+	// errUninitializedRepository identifies a Repository that Open did not
+	// produce. It is a caller defect rather than invalid input, so it is not
+	// part of the package's public error vocabulary, but the guard still returns
+	// an error instead of panicking: every failure in this package is rendered
+	// once at the CLI boundary.
+	errUninitializedRepository = errors.New("gitlog: repository was not returned by Open")
 )
 
 // GitError reports a failed Git operation without rendering repository-controlled

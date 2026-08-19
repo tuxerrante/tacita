@@ -34,7 +34,8 @@ func TestResolveCommit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ResolveCommit(t.Context(), repository, tt.revision)
+			repo := openTestRepository(t, repository)
+			got, err := repo.ResolveCommit(t.Context(), tt.revision)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("ResolveCommit() error = %v, want %v", err, tt.wantErr)
@@ -56,7 +57,7 @@ func TestResolveCommitBareRepository(t *testing.T) {
 	bare := filepath.Join(t.TempDir(), "bare repository.git")
 	runTestGit(t, "clone", "--quiet", "--bare", repository, bare)
 
-	got, err := ResolveCommit(t.Context(), bare, "HEAD")
+	got, err := openTestRepository(t, bare).ResolveCommit(t.Context(), "HEAD")
 	if err != nil {
 		t.Fatalf("ResolveCommit() error = %v", err)
 	}
@@ -65,43 +66,35 @@ func TestResolveCommitBareRepository(t *testing.T) {
 	}
 }
 
-func TestResolveCommitRejectsSHA256(t *testing.T) {
+func TestOpenRejectsSHA256(t *testing.T) {
 	repository := filepath.Join(t.TempDir(), "sha256")
 	runTestGit(t, "init", "--quiet", "--object-format=sha256", repository)
 
-	_, err := ResolveCommit(t.Context(), repository, "HEAD")
+	_, err := Open(t.Context(), repository)
 	if !errors.Is(err, ErrUnsupportedObjectFormat) {
-		t.Fatalf("ResolveCommit() error = %v, want ErrUnsupportedObjectFormat", err)
+		t.Fatalf("Open() error = %v, want ErrUnsupportedObjectFormat", err)
 	}
 }
 
 func TestResolveCommitRejectsInvalidInput(t *testing.T) {
-	tests := []struct {
-		name       string
-		repository string
-		revision   string
-	}{
-		{name: "empty repository", revision: "HEAD"},
-		{name: "empty revision", repository: "."},
+	if _, err := Open(t.Context(), ""); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Open() error = %v, want ErrInvalidInput", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ResolveCommit(t.Context(), tt.repository, tt.revision)
-			if !errors.Is(err, ErrInvalidInput) {
-				t.Fatalf("ResolveCommit() error = %v, want ErrInvalidInput", err)
-			}
-		})
+	repository, _ := newTestRepository(t)
+	_, err := openTestRepository(t, repository).ResolveCommit(t.Context(), "")
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("ResolveCommit() error = %v, want ErrInvalidInput", err)
 	}
 }
 
-func TestResolveCommitCanceled(t *testing.T) {
+func TestOpenCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := ResolveCommit(ctx, ".", "HEAD")
+	_, err := Open(ctx, ".")
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("ResolveCommit() error = %v, want context.Canceled", err)
+		t.Fatalf("Open() error = %v, want context.Canceled", err)
 	}
 }
 
@@ -119,19 +112,19 @@ func TestResolveCommitCancellationWaitsForGit(t *testing.T) {
 	defer cancel()
 
 	started := time.Now()
-	_, err := ResolveCommit(ctx, repository, "HEAD")
+	_, err := Open(ctx, repository)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("ResolveCommit() error = %v, want context.DeadlineExceeded", err)
+		t.Fatalf("Open() error = %v, want context.DeadlineExceeded", err)
 	}
 	if elapsed := time.Since(started); elapsed > 5*time.Second {
-		t.Fatalf("ResolveCommit() returned after %s, want <= 5s", elapsed)
+		t.Fatalf("Open() returned after %s, want <= 5s", elapsed)
 	}
 }
 
 func TestGitErrorStderrIsBoundedAndCopied(t *testing.T) {
 	repository, _ := newTestRepository(t)
 
-	_, err := ResolveCommit(t.Context(), repository, "missing")
+	_, err := openTestRepository(t, repository).ResolveCommit(t.Context(), "missing")
 	var gitErr *GitError
 	if !errors.As(err, &gitErr) {
 		t.Fatalf("ResolveCommit() error = %v, want *GitError", err)
@@ -268,9 +261,19 @@ func newTestRepository(t *testing.T) (string, string) {
 	t.Helper()
 
 	repository := filepath.Join(t.TempDir(), "-repo with space")
+	return repository, newTestRepositoryAt(t, repository)
+}
+
+// newTestRepositoryAt initializes a repository at repository and returns its
+// head commit. The tracked content embeds the path, so two repositories created
+// in the same second still have distinct commit IDs.
+func newTestRepositoryAt(t *testing.T, repository string) string {
+	t.Helper()
+
 	runTestGit(t, "init", "--quiet", "--object-format=sha1", repository)
 
-	if err := os.WriteFile(filepath.Join(repository, "tracked.txt"), []byte("content\n"), 0o600); err != nil {
+	tracked := filepath.Join(repository, "tracked.txt")
+	if err := os.WriteFile(tracked, []byte(repository+"\n"), 0o600); err != nil {
 		t.Fatalf("writing tracked file: %v", err)
 	}
 	runTestGit(t, "-C", repository, "add", "--", "tracked.txt")
@@ -282,7 +285,17 @@ func newTestRepository(t *testing.T) (string, string) {
 		"commit", "--quiet", "-m", "initial",
 	)
 
-	return repository, runTestGit(t, "-C", repository, "rev-parse", "HEAD")
+	return runTestGit(t, "-C", repository, "rev-parse", "HEAD")
+}
+
+func openTestRepository(t *testing.T, repository string) *Repository {
+	t.Helper()
+
+	repo, err := Open(t.Context(), repository)
+	if err != nil {
+		t.Fatalf("Open(%q) error = %v", repository, err)
+	}
+	return repo
 }
 
 func runTestGit(t *testing.T, args ...string) string {

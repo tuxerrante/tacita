@@ -9,26 +9,22 @@ import (
 	"testing"
 )
 
-// TestResolveCommitRejectsAncestorRepository is the regression test for Git's
-// discovery walk: without explicit targeting, a directory that is not a
-// repository resolves its ancestor's commit instead of failing.
-func TestResolveCommitRejectsAncestorRepository(t *testing.T) {
-	repository, ancestor := newTestRepository(t)
+// TestOpenRejectsAncestorRepository is the regression test for Git's discovery
+// walk: without explicit targeting, a directory that is not a repository
+// resolves its ancestor's commit instead of failing.
+func TestOpenRejectsAncestorRepository(t *testing.T) {
+	repository, _ := newTestRepository(t)
 	nested := filepath.Join(repository, "sub", "deep")
 	if err := os.MkdirAll(nested, 0o750); err != nil {
 		t.Fatalf("creating nested directory: %v", err)
 	}
 
-	got, err := ResolveCommit(t.Context(), nested, "HEAD")
-	if !errors.Is(err, ErrNotARepository) {
-		t.Fatalf("ResolveCommit() error = %v, want ErrNotARepository", err)
-	}
-	if got == ancestor {
-		t.Fatal("ResolveCommit() resolved the ancestor repository")
+	if _, err := Open(t.Context(), nested); !errors.Is(err, ErrNotARepository) {
+		t.Fatalf("Open() error = %v, want ErrNotARepository", err)
 	}
 }
 
-func TestResolveCommitAcceptsRepositoryShapes(t *testing.T) {
+func TestOpenAcceptsRepositoryShapes(t *testing.T) {
 	repository, want := newTestRepository(t)
 
 	linked := filepath.Join(t.TempDir(), "linked worktree")
@@ -50,7 +46,7 @@ func TestResolveCommitAcceptsRepositoryShapes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ResolveCommit(t.Context(), tt.repository, "HEAD")
+			got, err := openTestRepository(t, tt.repository).ResolveCommit(t.Context(), "HEAD")
 			if err != nil {
 				t.Fatalf("ResolveCommit() error = %v", err)
 			}
@@ -61,7 +57,7 @@ func TestResolveCommitAcceptsRepositoryShapes(t *testing.T) {
 	}
 }
 
-func TestResolveCommitAcceptsSubmoduleWorktree(t *testing.T) {
+func TestOpenAcceptsSubmoduleWorktree(t *testing.T) {
 	child, want := newTestRepository(t)
 	parent, _ := newTestRepository(t)
 
@@ -74,7 +70,8 @@ func TestResolveCommitAcceptsSubmoduleWorktree(t *testing.T) {
 		"submodule", "add", "--quiet", "--", child, "child",
 	)
 
-	got, err := ResolveCommit(t.Context(), filepath.Join(parent, "child"), "HEAD")
+	submodule := openTestRepository(t, filepath.Join(parent, "child"))
+	got, err := submodule.ResolveCommit(t.Context(), "HEAD")
 	if err != nil {
 		t.Fatalf("ResolveCommit() error = %v", err)
 	}
@@ -183,22 +180,22 @@ func TestRepositoryTarget(t *testing.T) {
 	}
 }
 
-func TestRepositoryGitArgsTargetsBeforeSubcommand(t *testing.T) {
+func TestGitArgsTargetsBeforeSubcommand(t *testing.T) {
 	repository, _ := newTestRepository(t)
 
-	got, err := repositoryGitArgs(repository, "rev-parse", "--show-object-format")
+	got, err := openTestRepository(t, repository).bind("rev-parse", "--show-object-format")
 	if err != nil {
-		t.Fatalf("repositoryGitArgs() error = %v", err)
+		t.Fatalf("bind() error = %v", err)
 	}
 	if got[0] != "--git-dir="+filepath.Join(repository, gitDirEntry) {
-		t.Errorf("repositoryGitArgs() first argument = %q, want the Git directory", got[0])
+		t.Errorf("bind() first argument = %q, want the Git directory", got[0])
 	}
 	if got[len(got)-2] != "rev-parse" {
-		t.Errorf("repositoryGitArgs() = %q, want the subcommand last", got)
+		t.Errorf("bind() = %q, want the subcommand last", got)
 	}
 	for _, argument := range got {
 		if argument == "-C" {
-			t.Fatal("repositoryGitArgs() still relies on Git repository discovery")
+			t.Fatal("bind() still relies on Git repository discovery")
 		}
 	}
 }

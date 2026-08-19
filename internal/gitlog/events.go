@@ -103,8 +103,9 @@ func (r *Repository) firstParentEvents(
 
 	var events []Event
 	parse := func(source io.Reader) error {
-		events, err = parseFirstParentEvents(source, eventLimit)
-		return err
+		var parseErr error
+		events, parseErr = parseFirstParentEvents(source, eventLimit)
+		return parseErr
 	}
 	if err := runStreaming(ctx, "listing integration events", outputLimit, parse, bound...); err != nil {
 		return nil, err
@@ -234,11 +235,22 @@ func kindOf(parents int) EventKind {
 	}
 }
 
+// parseObjectID validates before it copies, and reports the length rather than
+// the value, so an oversized argument costs neither a copy nor a message.
 func parseObjectID(value string) (ObjectID, error) {
 	var id ObjectID
-	if !isObjectID([]byte(value)) {
-		return id, fmt.Errorf("%q is not a complete lowercase object ID", value)
+	if len(value) != sha1HexLength {
+		return id, fmt.Errorf(
+			"object ID is %d bytes, want %d",
+			len(value),
+			sha1HexLength,
+		)
 	}
+
 	copy(id[:], value)
+	if !isObjectID(id[:]) {
+		return id, errors.New("object ID is not complete lowercase hexadecimal")
+	}
+
 	return id, nil
 }

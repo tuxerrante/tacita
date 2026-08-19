@@ -153,7 +153,11 @@ type boundedReader struct {
 }
 
 func (b *boundedReader) Read(p []byte) (int, error) {
-	if b.exceeded {
+	// A negative remainder would make the short count below negative, which no
+	// reader may return. Only a caller defect can produce one, and the stream
+	// still fails as a limit rather than becoming a panic further up.
+	if b.exceeded || b.remaining < 0 {
+		b.exceeded = true
 		return 0, errOutputLimit
 	}
 	if len(p) > b.remaining+1 {

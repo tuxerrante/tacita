@@ -1,6 +1,7 @@
 package gitlog
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -250,5 +251,49 @@ func removeObject(t *testing.T, repository string, id string) {
 	path := filepath.Join(repository, gitDirEntry, "objects", id[:2], id[2:])
 	if err := os.Remove(path); err != nil {
 		t.Fatalf("removing object: %v", err)
+	}
+}
+
+// TestFirstParentEventsReportsCallerCancellation pins the highest precedence in
+// the streamed classification: a caller that gave up is reported as such, not as
+// the killed process or truncated stream its cancellation produces.
+func TestFirstParentEventsReportsCallerCancellation(t *testing.T) {
+	repository, ids := newBranchedTestRepository(t)
+	opened := openTestRepository(t, repository)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := opened.FirstParentEvents(ctx, ids["merge"])
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("FirstParentEvents() error = %v, want context.Canceled", err)
+	}
+}
+
+// TestFirstParentEventsRejectsAZeroEventLimit covers the degenerate budget: no
+// event is allowed, so the first one already exceeds it.
+func TestFirstParentEventsRejectsAZeroEventLimit(t *testing.T) {
+	repository, ids := newBranchedTestRepository(t)
+
+	_, err := openTestRepository(t, repository).
+		firstParentEvents(t.Context(), ids["root"], maxStreamOutput, 0)
+
+	if !errors.Is(err, ErrEventLimit) {
+		t.Fatalf("firstParentEvents() error = %v, want ErrEventLimit", err)
+	}
+}
+
+func TestEventKindString(t *testing.T) {
+	tests := map[EventKind]string{
+		RootEvent:         "root",
+		SingleParentEvent: "single-parent",
+		MergeEvent:        "merge-result",
+		EventKind(9):      "unknown",
+	}
+
+	for kind, want := range tests {
+		if got := kind.String(); got != want {
+			t.Errorf("EventKind(%d).String() = %q, want %q", kind, got, want)
+		}
 	}
 }

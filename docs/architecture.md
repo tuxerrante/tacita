@@ -298,6 +298,57 @@ Generated files, lockfiles, fixtures, documentation, and non-Go languages are
 included unless they match a frozen path exclusion above. The first experiment
 does not infer generated status from names or contents.
 
+## Aggregation strategy
+
+The [experiment protocol](experiment.md) owns the metric formulas. This section
+owns only how they are computed.
+
+Read naively, the protocol asks for 81 configurations evaluated at 4 cutoffs,
+which reads like 324 traversals of history and invites parallelism. It is not.
+The frozen definitions collapse into a single accumulation:
+
+- the cutoffs are expanding, and training membership is nested, so a later
+  cutoff's totals are an earlier cutoff's totals plus the events in between;
+- the first experiment applies no temporal decay and a retained transaction
+  keeps its weight as the cutoff advances, so those totals are running sums;
+- of the four grid parameters, only the size weight changes what is
+  accumulated. The minimum opportunity, confidence, and lift thresholds are
+  post-aggregation filters over already-accumulated values, so 3 accumulation
+  states cover all 81 configurations.
+
+Therefore one ordered pass maintains three weighted sums side by side and
+snapshots at each cutoff boundary. Cutoff boundaries are defined over all
+integration events before eligibility exclusions, so `rev-list` already fixes
+`N` and the four boundary object IDs before `diff-tree` streams any change.
+
+Aggregate state is split by what each value is keyed on, because the formulas
+are not all per-pair:
+
+| State | Key | Holds | Bound |
+| --- | --- | --- | ---: |
+| Component | component identity | opportunity, exposure, prevalence numerator | 50,000 |
+| Pair | ordered component pair | support | 2,000,000 |
+
+Keying opportunity and exposure on the pair would be wrong as well as slow: a
+transaction containing the antecedent updates that antecedent's opportunity
+even when the consequent is absent, so a pair-keyed representation would have
+to touch every pair the antecedent has ever appeared in.
+
+Intern component identities to integer indices for the hot keys and restore the
+canonical component bytes only when rendering, so the pair key stays a small
+pointer-free value and ordering stays defined by the report contract.
+
+The chronological fold cannot produce the hash-shuffled control, which
+deliberately reorders events and destroys chronology. Normalized events are
+therefore retained in memory and the same accumulation runs again over the
+control ordering. Keeping accumulation a pure function of an event sequence is
+what makes the control almost free; it is also the clearest form.
+
+This strategy depends on the frozen no-decay decision. If a later experiment
+introduces temporal decay, retained weights change as the cutoff advances, the
+running-total fold is no longer valid, and this section must be revisited
+before the code is.
+
 ## Resource limits
 
 The first experiment uses these hard limits per repository run. A calibration
@@ -431,8 +482,24 @@ Begin sequentially. Before adding a goroutine, record:
 - awaited shutdown;
 - deterministic result ordering.
 
-Benchmark first. Independent repositories or cutoffs are a more plausible
-bounded-concurrency boundary than concurrent mutation of one candidate map.
+Benchmark first.
+
+Cutoffs and grid configurations are no longer candidate concurrency boundaries.
+They look independent, but the [aggregation strategy](#aggregation-strategy)
+shows they fold into one pass, and folding beats parallelism here on every
+axis: it removes work rather than redistributing it, it keeps one shared map
+instead of duplicating state against the 2 GiB budget, it cannot perturb the
+frozen byte-identical output, and it is less code. A goroutine per cutoff would
+buy at most the runner's four cores while giving up all of that.
+
+Independent repositories remain genuinely parallel, and they need no
+concurrency inside Tacita: one analysis run targets one repository, so the
+external harness parallelizes by running the binary once per repository. This
+keeps process isolation, per-run memory accounting, and per-run failure
+classification intact.
+
+That leaves no in-process fan-out in the first experiment. Revisit only if a
+sequential benchmark shows a real bottleneck.
 
 ## Distribution
 

@@ -139,6 +139,11 @@ complete-repository preflight and history traversal remain in this milestone.
 Deliver component projection, directional pair aggregation, raw and weighted
 measures, stable ranking, the frozen development grid, tests, and benchmarks.
 
+Aggregation follows the single-pass
+[aggregation strategy](docs/architecture.md#aggregation-strategy): one ordered
+fold with component-keyed and pair-keyed state, three weighted sums, and the
+grid derived by post-aggregation filtering. There is no in-process fan-out.
+
 Exit: exact repeated results, bounded behavior, and a configuration lock
 selected from the development corpus without holdout access.
 
@@ -147,6 +152,9 @@ selected from the development corpus without holdout access.
 Deliver the frozen rolling cutoffs and configuration, trivial baselines,
 blinded human review, negative and stress controls, and the configuration
 holdout evidence bundle.
+
+The four cutoffs are snapshots of the same fold, not four runs. The
+hash-shuffled control reuses that fold over its own event ordering.
 
 Exit: a complete go/no-go result without post-holdout threshold changes.
 

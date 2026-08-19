@@ -46,6 +46,8 @@ Implemented:
 - in-memory CLI tests;
 - supported Linux/amd64, Git 2.43+, and SHA-1 validation;
 - bounded, isolated revision resolution to a full commit object ID;
+- a run-scoped repository value that fails closed unless its constructor
+  validated the environment and classified the repository target;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
@@ -107,8 +109,9 @@ one is stacked on the previous:
 2. completed: target the repository explicitly so Git cannot discover an
    ancestor repository, per
    [repository targeting](docs/architecture.md#repository-targeting);
-3. carry the classified target and preflight result in a run-scoped repository
-   value, so object access cannot precede validation;
+3. completed: carry the classified target and preflight result in a run-scoped
+   repository value, so object access cannot precede validation, per
+   [package boundaries](docs/architecture.md#package-boundaries);
 4. reject shallow, grafted, alternate-backed, and promisor repositories before
    traversal;
 5. make bounded-output overflow tear the child down instead of discarding the

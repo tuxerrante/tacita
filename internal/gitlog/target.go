@@ -67,12 +67,9 @@ func pathExists(path string) (bool, error) {
 	}
 }
 
-func repositoryGitArgs(repository string, args ...string) ([]string, error) {
-	target, err := repositoryTarget(repository)
-	if err != nil {
-		return nil, err
-	}
-
+// gitArgs prepends target and the deterministic configuration overrides to
+// args. It is pure: classification already happened, so it cannot fail.
+func gitArgs(target []string, args ...string) []string {
 	overrides := []string{
 		"-c", "core.abbrev=40",
 		"-c", "core.fsmonitor=false",
@@ -80,5 +77,5 @@ func repositoryGitArgs(repository string, args ...string) ([]string, error) {
 		"-c", "diff.external=",
 	}
 
-	return slices.Concat(target, overrides, args), nil
+	return slices.Concat(target, overrides, args)
 }

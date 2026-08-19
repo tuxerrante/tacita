@@ -20,7 +20,6 @@ import (
 // repository-level completeness mechanisms. It cannot prove that every required
 // object is present, so a missing object is still classified during traversal.
 type Repository struct {
-	path      string
 	target    []string
 	preflight preflight
 	ready     bool
@@ -62,7 +61,6 @@ func Open(ctx context.Context, path string) (*Repository, error) {
 	}
 
 	return &Repository{
-		path:      absolute,
 		target:    target,
 		preflight: result,
 		ready:     true,

@@ -24,6 +24,12 @@ const (
 	// because a truncated prefix cannot prove the rest of the file is empty.
 	maxOverrideFile = 64 << 10
 
+	// asciiWhitespace is what Git skips when it reads a graft or alternates
+	// file. Go's unicode notion of space is wider, and every byte outside this
+	// set is a path byte Git will use, so trimming by it would read a file
+	// declaring a non-breaking space as if it declared nothing.
+	asciiWhitespace = " \t\r\n\v\f"
+
 	graftsFile     = "info/grafts"
 	alternatesFile = "objects/info/alternates"
 
@@ -193,7 +199,7 @@ func rejectOverrideContent(mechanism string, path string, source io.Reader, limi
 			limit,
 		)
 	}
-	if len(bytes.TrimSpace(content)) > 0 {
+	if len(bytes.Trim(content, asciiWhitespace)) > 0 {
 		return fmt.Errorf(
 			"%w: repository declares %s in %q",
 			ErrIncompleteRepository,

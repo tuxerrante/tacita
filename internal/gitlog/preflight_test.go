@@ -124,6 +124,33 @@ func TestOpenAcceptsEmptyHistoryOverrideFiles(t *testing.T) {
 	}
 }
 
+// TestOpenRejectsUnicodeBlankHistoryOverrideFiles covers an override file whose
+// only content is whitespace to Go but a path to Git. Git skips ASCII blanks in
+// the C locale, so every other byte names an object directory it will try to
+// open, and a wider notion of blank would read a declaration as if it were
+// nothing.
+func TestOpenRejectsUnicodeBlankHistoryOverrideFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "no-break space", content: "\u00a0"},
+		{name: "line separator", content: "\u2028"},
+		{name: "ideographic space", content: "\u3000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository, _ := newTestRepository(t)
+			writeOverrideFile(t, repository, alternatesFile, tt.content)
+
+			if _, err := Open(t.Context(), repository); !errors.Is(err, ErrIncompleteRepository) {
+				t.Fatalf("Open() error = %v, want ErrIncompleteRepository", err)
+			}
+		})
+	}
+}
+
 // TestOpenRejectsOversizedHistoryOverrideFiles covers a file that cannot be read
 // within the bound. Reading only a prefix would accept leading whitespace longer
 // than the limit while Git still reads the alternate that follows it.
@@ -335,6 +362,9 @@ func FuzzRejectPartialCloneConfig(f *testing.F) {
 func FuzzRejectOverrideContent(f *testing.F) {
 	f.Add([]byte(""), 8)
 	f.Add([]byte("   \n\t "), 8)
+	// Unicode whitespace Git reads as a path, not as blank.
+	f.Add([]byte("\xc2\xa0"), 8)
+	f.Add([]byte("\xe2\x80\xa8"), 8)
 	f.Add([]byte("../objects\n"), 8)
 	// The historical defect: leading whitespace past the limit trimmed to empty
 	// and was accepted while Git still read the entry that followed.
@@ -352,7 +382,7 @@ func FuzzRejectOverrideContent(f *testing.F) {
 			if !errors.Is(err, ErrIncompleteRepository) {
 				t.Fatalf("rejectOverrideContent() over the limit error = %v, want ErrIncompleteRepository", err)
 			}
-		case len(bytes.TrimSpace(content)) > 0:
+		case len(bytes.Trim(content, asciiWhitespace)) > 0:
 			if !errors.Is(err, ErrIncompleteRepository) {
 				t.Fatalf("rejectOverrideContent() with a declaration error = %v, want ErrIncompleteRepository", err)
 			}

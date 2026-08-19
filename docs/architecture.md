@@ -148,6 +148,9 @@ read objects and never touch the working tree.
 
 - rejects empty inputs, unsupported platforms, Git older than 2.43, and
   non-SHA-1 repositories;
+- binds every repository command to an explicit Git directory, so a path that
+  is neither a worktree nor a bare repository is rejected instead of resolving
+  an ancestor repository;
 - executes `git version`, `rev-parse --show-object-format`, and the frozen
   resolution command with a fixed environment allowlist;
 - applies the required repository-local configuration overrides;
@@ -161,15 +164,11 @@ immutable commit identity but does not establish complete history. Shallow,
 graft, alternates, promisor, and missing-object checks remain mandatory before
 the ID reaches history traversal.
 
-This boundary is provisional and under review. Two defects are known and
-scheduled:
-
-- it targets the repository with `-C`, so it inherits the discovery escape
-  described above;
-- its bounded writer keeps accepting and discarding bytes after the limit is
-  reached, so a hostile repository still pays for the full overflow before the
-  run fails. The writer must instead fail the write, which makes `os/exec`
-  close the read pipe and stop the copy, and cancel the child.
+This boundary is provisional and under review. One defect is known and
+scheduled: its bounded writer keeps accepting and discarding bytes after the
+limit is reached, so a hostile repository still pays for the full overflow
+before the run fails. The writer must instead fail the write, which makes
+`os/exec` close the read pipe and stop the copy, and cancel the child.
 
 ## Supported experiment environment
 

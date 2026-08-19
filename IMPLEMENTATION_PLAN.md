@@ -52,7 +52,7 @@ Implemented:
 
 Not implemented:
 
-- explicit repository targeting and rejection of known-incomplete repositories;
+- rejection of known-incomplete repositories;
 - streaming `rev-list` and `diff-tree` history parsing;
 - transaction normalization or component projection;
 - mining, baselines, or temporal evaluation;
@@ -62,10 +62,10 @@ Not implemented:
 
 The current CLI is disposable. Its shape may change when the first real command
 contract is frozen. The implemented Git boundary is likewise provisional: a
-pre-implementation review found a repository-discovery escape and a bounded
-writer that discards overflow instead of stopping the child. Both are recorded
-in [`docs/architecture.md`](docs/architecture.md#repository-targeting) and
-scheduled below.
+pre-implementation review found a repository-discovery escape, now fixed, and a
+bounded writer that discards overflow instead of stopping the child, which is
+still scheduled below and recorded in
+[`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
 ## Frozen Milestone 0 decisions
 
@@ -104,8 +104,8 @@ building on it. Each entry is one pull request with one motivation, and each
 one is stacked on the previous:
 
 1. completed: supported-environment validation and full commit resolution;
-2. target the repository explicitly so Git cannot discover an ancestor
-   repository, per
+2. completed: target the repository explicitly so Git cannot discover an
+   ancestor repository, per
    [repository targeting](docs/architecture.md#repository-targeting);
 3. carry the classified target and preflight result in a run-scoped repository
    value, so object access cannot precede validation;

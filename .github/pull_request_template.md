@@ -1,4 +1,4 @@
-# Pull request
+# 📋 Pull request
 
 <!--
 These are the minimum checks for every pull request, human or agent authored.
@@ -8,11 +8,11 @@ constraints, and docs/architecture.md for implementation, security, and
 testing contracts.
 -->
 
-## Summary
+## 📝 Summary
 
 <!-- What changes, and why is this the smallest coherent PR? -->
 
-## Motivation boundary
+## 🎯 Motivation boundary
 
 - [ ] This PR has exactly one independent motivation.
 - [ ] Every file in the diff serves that motivation.
@@ -21,7 +21,7 @@ testing contracts.
 
 <!-- Write "Not applicable" when this PR is not part of a stack. -->
 
-## Side effects
+## 💥 Side effects
 
 <!--
 State what this change touches beyond its own call path: files or packs
@@ -30,10 +30,11 @@ and Git configuration read, resource budgets consumed, output bytes, exit
 codes, and CI behavior. Write "None" only when the diff genuinely has none.
 -->
 
-## Test levels
+## 🧪 Test levels
 
-Record every level as covered, or as not applicable with the reason. The
-testing contract lives in `docs/architecture.md`, under "Testing".
+Record every level as covered, or as not applicable with the reason. Use ✅ for
+covered and ➖ for not applicable. The testing contract lives in
+`docs/architecture.md`, under "Testing".
 
 | Level | Status | Evidence |
 | --- | --- | --- |
@@ -51,7 +52,7 @@ testing contract lives in `docs/architecture.md`, under "Testing".
 | User-interaction simulation for a UI or service surface | | |
 | Benchmark before adding concurrency or a dependency | | |
 
-## Validation
+## 🔍 Validation
 
 - [ ] `make quality-gate`
 - [ ] New tests fail against the unfixed code.
@@ -61,7 +62,7 @@ Record what ran, what passed, and what was deliberately skipped and why. Name
 any claim that is reasoned rather than measured.
 -->
 
-## Strongest opposing argument
+## 🥊 Strongest opposing argument
 
 <!--
 The best concrete case that this change is wrong, unnecessary, or should be
@@ -69,11 +70,11 @@ designed differently, plus the checks used to try to falsify it. End with
 "stands", "weakened", or "changed".
 -->
 
-## Risks
+## ⚠️ Risks
 
 <!-- State the main residual risk or write "None identified". -->
 
-## Human decision needed
+## 🙋 Human decision needed
 
 <!--
 Anything the reviewer must ratify: an interpretation of a frozen contract, an

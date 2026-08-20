@@ -100,9 +100,8 @@ go test ./cmd/tacita -run '^TestRun$' -count=1
 - Run `/review-pr-hygiene` against the final diff before publishing or updating
   a pull request. Treat mixed concerns as blocking, not advisory. Use squash as
   the merge method.
-- While the repository is private, explicitly request Copilot review on every
-  pull request. Resolve every review conversation before evaluating merge
-  readiness.
+- Explicitly request Copilot review on every pull request. Resolve every review
+  conversation before evaluating merge readiness.
 - Write committed documentation, comments, and user-facing text in English.
 - Personal Italian coaching belongs only in ignored local files.
 - Do not commit generated `bin/`, `.go/`, or `coverage.out` artifacts.

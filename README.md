@@ -10,7 +10,7 @@ contracts.
 Tacita is not an AI detector and does not recommend the next feature or file to
 edit.
 
-## Status
+## 🚦 Status
 
 Milestone 0 is complete: the first experiment contract is amended and
 re-frozen. Milestone 1 safe Git ingestion is in progress: the internal Git
@@ -18,7 +18,7 @@ boundary now validates the supported environment and safely resolves a revision
 to a complete commit ID. The current binary remains only a testable CLI shell;
 it does not analyze Git history or enforce policy. There are no releases yet.
 
-## Start here
+## 🧭 Start here
 
 Read only what matches the task:
 
@@ -36,7 +36,7 @@ Contributors should also read [`CONTRIBUTING.md`](CONTRIBUTING.md). Coding
 agents start with [`AGENTS.md`](AGENTS.md), which points to the minimum context
 needed for each kind of change.
 
-## Development
+## 🛠️ Development
 
 Requirements:
 
@@ -63,17 +63,17 @@ Run the current shell:
 go run ./cmd/tacita backtest --revision HEAD .
 ```
 
-## Contributing
+## 🤝 Contributing
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) before contributing.
 
-## Security
+## 🔐 Security
 
 Tacita treats analyzed repositories as untrusted input. See
 [`SECURITY.md`](SECURITY.md) for the reporting process and current support
 status.
 
-## License
+## 📄 License
 
 Licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).

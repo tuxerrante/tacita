@@ -67,8 +67,9 @@ each layer builds and passes its own gate.
 Before requesting review:
 
 1. run `make quality-gate`;
-2. complete the pull request template with the scope boundary, validation, and
-   residual risk.
+2. complete every section of the pull request template, including side
+   effects, test levels, the strongest opposing argument, residual risk, and
+   any human decision the reviewer must make.
 
 Squash is the only supported merge method. The PR title becomes the durable
 change summary, so use a focused conventional-commit title. Delete the source

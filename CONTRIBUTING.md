@@ -7,7 +7,7 @@ implementation.
 Start with the task-oriented documentation map in
 [`docs/README.md`](docs/README.md).
 
-## Development setup
+## 🛠️ Development setup
 
 Requirements:
 
@@ -25,7 +25,7 @@ make check
 
 Development tools are pinned and installed under `.go/bin`.
 
-## Validation
+## 🔍 Validation
 
 Use the smallest relevant target while iterating:
 
@@ -52,7 +52,7 @@ workflow searches for new inputs instead, and `make fuzz FUZZTIME=2m`
 reproduces it locally. Commit any input it reports as a seed under
 `testdata/fuzz`, so the deterministic gate covers it from then on.
 
-## Pull requests
+## 🔀 Pull requests
 
 All versioned changes go through a pull request. Keep each PR to one logical,
 independently reviewable change; do not mix behavior, refactoring, formatting,
@@ -75,7 +75,7 @@ Squash is the only supported merge method. The PR title becomes the durable
 change summary, so use a focused conventional-commit title. Delete the source
 branch after merge.
 
-## Go conventions
+## 🐹 Go conventions
 
 - Prefer the standard library and concrete types.
 - Define interfaces at the consumer only when substitution is real.
@@ -87,7 +87,7 @@ branch after merge.
 - Do not add concurrency before a sequential benchmark demonstrates a need.
 - Do not add runtime dependencies without a reviewed justification.
 
-## Documentation
+## 📚 Documentation
 
 Committed documentation, architecture notes, code comments, and user-facing
 text are written in English. Personal coaching notes must remain in ignored
@@ -98,6 +98,53 @@ decision. Update the owning document, then replace repeated detail elsewhere
 with a link instead of maintaining parallel summaries. `make fmt` formats both
 Go and Markdown; `make markdown-check` applies the Markdown rules.
 
+### Emoji vocabulary
+
+Markdown headings carry an emoji so a reader can locate a purpose without
+reading prose. The value comes from consistency, so the same purpose always
+uses the same emoji.
+
+| Emoji | Purpose |
+| --- | --- |
+| 🧭 | Orientation: where to start, reading paths |
+| 🚦 | Status: current state, milestone, blockers |
+| 🛠️ | Setup, tooling, development environment |
+| 🔍 | Validation, verification, recorded evidence |
+| 🧪 | Tests and test levels |
+| 🔀 | Pull requests and merges |
+| 🧾 | Commits and history |
+| 🐹 | Go code and language conventions |
+| 📚 | Documentation, its map, and its ownership |
+| 🏗️ | Architecture and package design |
+| 📊 | Experiment, metrics, corpus, thresholds |
+| 🔐 | Security, threats, untrusted input |
+| 🤝 | Contributing and conduct |
+| 📄 | License and legal terms |
+| 📋 | Checklist or template surface |
+| 📝 | Summary or description |
+| 🎯 | Motivation, scope, boundary |
+| 💥 | Side effects and blast radius |
+| 🥊 | Strongest opposing argument |
+| ⚠️ | Risk, caution, residual exposure |
+| 🙋 | Human decision required |
+| ✅ | Covered, satisfied, applicable |
+| ➖ | Not applicable |
+
+Rules:
+
+- put exactly one emoji, at the start of a `##` heading; leave document titles
+  and deeper headings plain, except a checklist surface such as
+  [`.github/pull_request_template.md`](.github/pull_request_template.md), whose
+  title marks the surface itself;
+- reuse ✅ and ➖ for status cells in tables;
+- when a document needs a purpose the table omits, add the row in the same pull
+  request instead of inventing a local symbol;
+- emoji belong to documentation. Never emit them from Go source, program
+  output, or commit titles.
+
+A document adopts this vocabulary during its next substantive update. Rewriting
+an untouched document only to add emoji is not a motivation for a pull request.
+
 The installed pre-commit hook also checks common file errors, module tidiness,
 and staged secrets with Gitleaks. Run the full hook set with:
 
@@ -105,7 +152,7 @@ and staged secrets with Gitleaks. Run the full hook set with:
 make pre-commit-run
 ```
 
-## Commits
+## 🧾 Commits
 
 Use focused conventional commits such as:
 
@@ -119,7 +166,7 @@ Use focused conventional commits such as:
 
 Do not mix generated artifacts or unrelated formatting with behavioral changes.
 
-## License
+## 📄 License
 
 By contributing, you agree that your contributions are licensed under the
 Apache License 2.0.

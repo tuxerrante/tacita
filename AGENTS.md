@@ -102,7 +102,9 @@ go test ./cmd/tacita -run '^TestRun$' -count=1
   the merge method.
 - Explicitly request Copilot review on every pull request. Resolve every review
   conversation before evaluating merge readiness.
-- Write committed documentation, comments, and user-facing text in English.
+- Write committed documentation, comments, and user-facing text in English, and
+  follow the documentation emoji vocabulary in
+  [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Personal Italian coaching belongs only in ignored local files.
 - Do not commit generated `bin/`, `.go/`, or `coverage.out` artifacts.
 - Do not publish, create remotes, open pull requests, or rewrite shared history

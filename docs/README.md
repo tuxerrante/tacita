@@ -3,7 +3,7 @@
 The documentation is organized by question so readers and coding agents can
 load only the context they need.
 
-## Reading paths
+## 🧭 Reading paths
 
 ### Understand the product
 
@@ -44,7 +44,7 @@ Start at [`AGENTS.md`](../AGENTS.md). It contains the repository state,
 authority order, validation commands, and context-loading rules. Client-specific
 instruction files should remain thin adapters to that file.
 
-## Document ownership
+## 📚 Document ownership
 
 | Document | Owns | Does not own |
 | --- | --- | --- |

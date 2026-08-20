@@ -32,8 +32,8 @@ codes, and CI behavior. Write "None" only when the diff genuinely has none.
 
 ## Test levels
 
-Record every level as covered, or as not applicable with the reason.
-[`docs/architecture.md`](../docs/architecture.md#testing) owns the contract.
+Record every level as covered, or as not applicable with the reason. The
+testing contract lives in `docs/architecture.md`, under "Testing".
 
 | Level | Status | Evidence |
 | --- | --- | --- |

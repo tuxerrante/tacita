@@ -2,7 +2,7 @@
 
 ## Repository state
 
-Tacita is an experimental Go 1.26 CLI for turning repository-local conventions
+Tacita is an experimental Go 1.27 CLI for turning repository-local conventions
 into explicit, human-ratified contracts. The checked-in executable is only a
 disposable `backtest` shell. It does not read Git history, mine candidates,
 evaluate profiles, ratify rules, or enforce policy.
@@ -44,7 +44,7 @@ contract and wins if this summary drifts.
 
 ## Commands
 
-Requirements are Go 1.26, Git, GNU Make, and `uv`.
+Requirements are Go 1.27, Git, GNU Make, and `uv`.
 
 ```bash
 make fmt           # format Go source and Markdown

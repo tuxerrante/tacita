@@ -40,7 +40,7 @@ needed for each kind of change.
 
 Requirements:
 
-- Go 1.26;
+- Go 1.27;
 - Git;
 - GNU Make;
 - `uv`.

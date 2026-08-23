@@ -11,7 +11,7 @@ Start with the task-oriented documentation map in
 
 Requirements:
 
-- Go 1.26;
+- Go 1.27;
 - Git;
 - GNU Make;
 - `uv`;

@@ -40,7 +40,7 @@ artifacts, not product policy.
 
 Implemented:
 
-- a Go 1.26 module with zero runtime dependencies;
+- a Go 1.27 module with zero runtime dependencies;
 - a testable `tacita backtest` command shell;
 - process-boundary exit codes and signal cancellation;
 - in-memory CLI tests;

@@ -277,7 +277,7 @@ repositories, object alternates, and promisor repositories are unsupported.
 Detect these conditions before history traversal and return a typed
 unsupported-environment or incomplete-repository error.
 
-The frozen reference environment uses Git 2.55.0 and Go 1.26.5. Calibration,
+The frozen reference environment uses Git 2.55.0 and Go 1.27.0. Calibration,
 holdout, and repeated determinism runs use the exact same Git version, Tacita
 binary digest, and optional Go helper version recorded in the development lock.
 

@@ -26,7 +26,7 @@ exclusions. Budget exhaustion makes the profile lane non-passing.
 
 ## Go metadata parser
 
-The `go-core` tier requires the frozen Go 1.26.5 toolchain as an optional
+The `go-core` tier requires the frozen Go 1.27.0 toolchain as an optional
 profile helper; inferred mining still requires only Git. For each `go.mod` blob:
 
 1. write the exact bounded blob bytes to a private temporary file;
@@ -37,7 +37,7 @@ profile helper; inferred mining still requires only Git. For each `go.mod` blob:
 5. remove the temporary file on every success, error, or cancellation path.
 
 The command is parse-only and must not run module loading, download
-dependencies, or modify repository files. Missing Go 1.26.5, malformed `go.mod`,
+dependencies, or modify repository files. Missing Go 1.27.0, malformed `go.mod`,
 unexpected JSON, or a helper failure is explicit and non-passing.
 
 Module roots are the repository-relative parent directories of `go.mod`; the
@@ -50,7 +50,7 @@ Provenance:
 
 - source: [official Go module documentation](https://go.dev/ref/mod);
 - profile version: `go-core/v1`;
-- parser toolchain: Go 1.26.5.
+- parser toolchain: Go 1.27.0.
 
 | Rule ID | Applicability | Proposed expectation | Evidence |
 | --- | --- | --- | --- |

@@ -20,6 +20,12 @@ carry `human_inspected_holdout`, `self_attested_freeze`, and
 `single_reviewer`, `single_configuration_holdout`, `small_review_sample`, and
 `timing_label_coupling`.
 
+On 2026-08-23 the frozen reference and `go-core` toolchain was amended
+from Go 1.26.5 to Go 1.27.0. This amendment changes no corpus ID,
+configuration grid, numeric threshold, selector key, or product-label
+gate. It is safe because no calibration or holdout output has been
+produced yet; Milestone 1 is still in progress.
+
 ## Hypotheses
 
 ### Repository-inferred candidates

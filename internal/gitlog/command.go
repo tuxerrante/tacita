@@ -84,6 +84,9 @@ func runGit(
 	stdout := newLimitedBuffer(stdoutLimit, stop)
 	stderr := newLimitedBuffer(maxGitStderr, stop)
 
+	//nolint:gosec // G204: git runs with a fixed command and an argument array,
+	// never a shell; the validated repository target and argument construction are
+	// the documented control (see docs/architecture.md#git-process-boundary).
 	cmd := exec.CommandContext(runCtx, "git", args...)
 	cmd.Env = gitEnvironment()
 	cmd.Stdout = stdout
@@ -206,6 +209,9 @@ func runStreaming(
 
 	stderr := newLimitedBuffer(maxGitStderr, stop)
 
+	//nolint:gosec // G204: git runs with a fixed command and an argument array,
+	// never a shell; the validated repository target and argument construction are
+	// the documented control (see docs/architecture.md#git-process-boundary).
 	cmd := exec.CommandContext(runCtx, "git", args...)
 	cmd.Env = gitEnvironment()
 	cmd.Stdin = stdin

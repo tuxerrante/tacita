@@ -31,6 +31,7 @@ linters:
       - path: _test\.go
         linters:
           - gosec
+          - goconst
 
 run:
   tests: true

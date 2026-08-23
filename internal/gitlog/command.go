@@ -84,7 +84,11 @@ func runGit(
 	stdout := newLimitedBuffer(stdoutLimit, stop)
 	stderr := newLimitedBuffer(maxGitStderr, stop)
 
-	cmd := exec.CommandContext(runCtx, "git", args...)
+	// git runs as a fixed command name with an argument slice and never through a
+	// shell; runGit also serves non-repository commands (for example, git version),
+	// and repository target binding/validation is enforced by the callers that
+	// classify a path (see docs/architecture.md#git-process-boundary).
+	cmd := exec.CommandContext(runCtx, "git", args...) //nolint:gosec // G204: fixed command name and argument slice, never a shell
 	cmd.Env = gitEnvironment()
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -206,7 +210,11 @@ func runStreaming(
 
 	stderr := newLimitedBuffer(maxGitStderr, stop)
 
-	cmd := exec.CommandContext(runCtx, "git", args...)
+	// git runs as a fixed command name with an argument slice and never through a
+	// shell; runGit also serves non-repository commands (for example, git version),
+	// and repository target binding/validation is enforced by the callers that
+	// classify a path (see docs/architecture.md#git-process-boundary).
+	cmd := exec.CommandContext(runCtx, "git", args...) //nolint:gosec // G204: fixed command name and argument slice, never a shell
 	cmd.Env = gitEnvironment()
 	cmd.Stdin = stdin
 	cmd.Stderr = stderr

@@ -1,2 +1,6 @@
 [global]
 cache-dir = ".go/rumdl-cache"
+# MD013 (line-length) is disabled repo-wide: hard line-length wrapping is not
+# useful for this repo's prose, and it would flag CLAUDE.md's mandated 102-char
+# guidance prefix line.
+disable = ["MD013"]

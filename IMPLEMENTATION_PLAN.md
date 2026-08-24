@@ -120,8 +120,10 @@ one is stacked on the previous:
 5. completed: make bounded-output overflow tear the child down instead of
    discarding the overflow;
 6. completed: stream and validate `rev-list` first-parent event metadata;
-7. stream `diff-tree` records into normalized events and exclusion
+7. completed: stream `diff-tree` records into normalized events and exclusion
    diagnostics.
+8. project normalized event paths into deduplicated component transactions
+   under the frozen component-projection, exclusion, and resource contracts.
 
 Steps 6 and 7 are not split into a generic runner plus a parser. The two
 commands have materially different output shapes and consumers, and a runner
@@ -178,10 +180,10 @@ Deliver:
 Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
-The first learning exercise should implement `ResolveCommit` under the frozen
-environment, history, error, and budget contracts. That exercise is complete;
-rejecting known-incomplete repositories and history traversal remain in this
-milestone.
+Revision resolution, repository-completeness preflight, and history traversal
+are complete. Component projection from normalized event paths into bounded,
+deduplicated component transactions under the frozen contracts is the next
+learning exercise.
 
 ### 2. Descriptive miner
 

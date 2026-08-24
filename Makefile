@@ -9,16 +9,18 @@ COVERAGE_FILE := coverage.out
 MIN_COVERAGE ?= 80
 FUZZTIME ?= 1m
 
-GOFUMPT_VERSION ?= v0.11.0
-GITLEAKS_VERSION ?= v8.30.1
-GOLANGCI_LINT_VERSION ?= v2.13.1
-GOVULNCHECK_VERSION ?= v1.7.0
-RUMDL_VERSION ?= 0.2.55
-GOFUMPT := $(TOOLS_DIR)/gofumpt
-GITLEAKS := $(TOOLS_DIR)/gitleaks
-GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint
-GOVULNCHECK := $(TOOLS_DIR)/govulncheck
+RUMDL_VERSION ?= 0.2.60
 RUMDL := $(TOOLS_DIR)/rumdl
+RUMDL_STAMP := $(UV_TOOLS_DIR)/.rumdl-$(RUMDL_VERSION)
+
+# The pinned Go tools are managed by bingo: each version lives in its own nested
+# module under .bingo, and .bingo/Variables.mk exposes GOFUMPT, GITLEAKS,
+# GOLANGCI_LINT, GOVULNCHECK, and BINGO as version-stamped paths whose targets
+# rebuild whenever the matching .bingo/<tool>.mod changes. Point GOBIN at
+# TOOLS_DIR before the include so those binaries land under .go/bin; the include
+# leaves GOBIN untouched because it assigns with ?=.
+GOBIN := $(CURDIR)/$(TOOLS_DIR)
+include .bingo/Variables.mk
 
 LINT_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD 2>/dev/null)
 
@@ -32,30 +34,40 @@ help: ## Show available targets
 		LC_ALL=C sort -t ':' -k1,1 | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-tools: $(GOFUMPT) $(GITLEAKS) $(GOLANGCI_LINT) $(GOVULNCHECK) $(RUMDL) ## Install pinned development tools locally
+tools: $(GOFUMPT) $(GITLEAKS) $(GOLANGCI_LINT) $(GOVULNCHECK) $(RUMDL) $(TOOLS_DIR)/gofumpt $(TOOLS_DIR)/gitleaks ## Install pinned development tools locally
 
-$(GOFUMPT):
-	@mkdir -p "$(TOOLS_DIR)"
-	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
+# bingo builds only the version-stamped binary (for example gofumpt-v0.11.0).
+# pre-commit invokes tools by their bare .go/bin/<tool> name, so relink those
+# names to the pinned build. The link depends on the versioned path, so a pin
+# bump repoints it without a manual clean.
+$(TOOLS_DIR)/gofumpt: $(GOFUMPT)
+	@ln -sf "$(notdir $(GOFUMPT))" "$@"
 
-$(GITLEAKS):
-	@mkdir -p "$(TOOLS_DIR)"
-	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION)
+$(TOOLS_DIR)/gitleaks: $(GITLEAKS)
+	@ln -sf "$(notdir $(GITLEAKS))" "$@"
 
-$(GOLANGCI_LINT):
-	@mkdir -p "$(TOOLS_DIR)"
-	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+# Relink a bare bingo so maintainers can change a pin without hard-coding the
+# bingo version; this is not part of `tools` because only pin changes need it.
+$(TOOLS_DIR)/bingo: $(BINGO)
+	@ln -sf "$(notdir $(BINGO))" "$@"
 
-$(GOVULNCHECK):
-	@mkdir -p "$(TOOLS_DIR)"
-	GOBIN="$(CURDIR)/$(TOOLS_DIR)" go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-
-$(RUMDL):
+# rumdl ships as a PyPI wheel, not a Go module, so bingo cannot pin it. The
+# install recipe lives on the binary target so a fresh checkout or a deleted
+# binary always reinstalls; the version-stamped prerequisite adds the
+# reinstall-on-bump behaviour, since bumping RUMDL_VERSION names a stamp that
+# does not exist yet and is therefore newer than the binary. The recipe touches
+# the stamp before installing so the freshly written binary is the newest file,
+# which keeps an unchanged pin a no-op instead of reinstalling on every run.
+$(RUMDL): $(RUMDL_STAMP)
 	@command -v uv >/dev/null || { echo "uv is required to install rumdl" >&2; exit 1; }
 	@mkdir -p "$(TOOLS_DIR)" "$(UV_TOOLS_DIR)"
+	@rm -f "$(UV_TOOLS_DIR)"/.rumdl-* && touch "$(RUMDL_STAMP)"
 	UV_TOOL_DIR="$(CURDIR)/$(UV_TOOLS_DIR)" \
 		UV_TOOL_BIN_DIR="$(CURDIR)/$(TOOLS_DIR)" \
 		uv tool install --force "rumdl==$(RUMDL_VERSION)"
+
+$(RUMDL_STAMP):
+	@mkdir -p "$(UV_TOOLS_DIR)" && touch "$@"
 
 fmt: $(GOFUMPT) $(RUMDL) ## Format Go source and Markdown in place
 	"$(GOFUMPT)" -w .

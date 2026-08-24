@@ -1,0 +1,55 @@
+# Auto generated binary variables helper managed by https://github.com/bwplotka/bingo v0.10. DO NOT EDIT.
+# All tools are designed to be build inside $GOBIN.
+BINGO_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+GOPATH ?= $(shell go env GOPATH)
+GOBIN  ?= $(firstword $(subst :, ,${GOPATH}))/bin
+GO     ?= $(shell which go)
+
+# Ensure bingo-managed tools are always built for the host platform,
+# even when GOOS/GOARCH are set for cross-compilation of other targets.
+GOHOSTOS     ?= $(shell $(GO) env GOHOSTOS)
+GOHOSTARCH   ?= $(shell $(GO) env GOHOSTARCH)
+GOHOSTARM    ?= $(shell $(GO) env GOHOSTARM)
+
+# Below generated variables ensure that every time a tool under each variable is invoked, the correct version
+# will be used; reinstalling only if needed.
+# For example for bingo variable:
+#
+# In your main Makefile (for non array binaries):
+#
+#include .bingo/Variables.mk # Assuming -dir was set to .bingo .
+#
+#command: $(BINGO)
+#	@echo "Running bingo"
+#	@$(BINGO) <flags/args..>
+#
+BINGO := $(GOBIN)/bingo-v0.10.0
+$(BINGO): $(BINGO_DIR)/bingo.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/bingo-v0.10.0"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=bingo.mod -o=$(GOBIN)/bingo-v0.10.0 "github.com/bwplotka/bingo"
+
+GITLEAKS := $(GOBIN)/gitleaks-v8.30.1
+$(GITLEAKS): $(BINGO_DIR)/gitleaks.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/gitleaks-v8.30.1"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=gitleaks.mod -o=$(GOBIN)/gitleaks-v8.30.1 "github.com/zricethezav/gitleaks/v8"
+
+GOFUMPT := $(GOBIN)/gofumpt-v0.11.0
+$(GOFUMPT): $(BINGO_DIR)/gofumpt.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/gofumpt-v0.11.0"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=gofumpt.mod -o=$(GOBIN)/gofumpt-v0.11.0 "mvdan.cc/gofumpt"
+
+GOLANGCI_LINT := $(GOBIN)/golangci-lint-v2.13.1
+$(GOLANGCI_LINT): $(BINGO_DIR)/golangci-lint.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/golangci-lint-v2.13.1"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=golangci-lint.mod -o=$(GOBIN)/golangci-lint-v2.13.1 "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
+
+GOVULNCHECK := $(GOBIN)/govulncheck-v1.7.0
+$(GOVULNCHECK): $(BINGO_DIR)/govulncheck.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/govulncheck-v1.7.0"
+	@cd $(BINGO_DIR) && GOWORK=off GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) GOARM=$(GOHOSTARM) $(GO) build -mod=mod -modfile=govulncheck.mod -o=$(GOBIN)/govulncheck-v1.7.0 "golang.org/x/vuln/cmd/govulncheck"
+

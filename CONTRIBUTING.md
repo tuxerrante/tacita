@@ -23,7 +23,15 @@ make pre-commit-install
 make check
 ```
 
-Development tools are pinned and installed under `.go/bin`.
+Development tools are pinned and installed under `.go/bin`. The Go tools
+(`gofumpt`, `gitleaks`, `golangci-lint`, `govulncheck`) are pinned with
+[bingo](https://github.com/bwplotka/bingo): each
+version lives in its own module under `.bingo/`, and `make tools` rebuilds a tool
+whenever its `.bingo/<tool>.mod` changes, so a version bump takes effect without
+`make clean`. `rumdl` is pinned by `RUMDL_VERSION` in the `Makefile` and
+installed with `uv`. To change a Go tool version, run
+`GOBIN="$PWD/.go/bin" bingo get <tool>@<version>` (installing bingo first with
+`make "$PWD/.go/bin/bingo-<version>"`) and commit the updated `.bingo/` files.
 
 ## 🔍 Validation
 

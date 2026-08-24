@@ -47,5 +47,29 @@ jobs:
           cache-dependency-glob: Makefile
           enable-cache: true
 
+      # Cache the compiled tool binaries so the quality gate skips rebuilding
+      # gofumpt, gitleaks, golangci-lint and govulncheck on every run; a cold
+      # build of golangci-lint alone costs the bulk of `make tools`. The key
+      # tracks exactly the inputs that change a binary: the bingo manifests
+      # (Go tool pins), the Makefile (the rumdl pin) and go.mod (the toolchain
+      # the binaries are built with), qualified by runner OS and arch because
+      # the binaries are platform-specific.
+      #
+      # restore-keys is safe here despite issue #33's mtime footgun: bingo
+      # builds version-stamped paths (gofumpt-vX.Y.Z), so a partial hit that
+      # restores older binaries cannot mask a bump — the new version names a
+      # path the cache lacks, forcing a rebuild, and the rumdl sentinel behaves
+      # the same. An unchanged pin restores the exact binary and rebuilds
+      # nothing.
+      - name: Cache pinned tool binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .go/bin
+            .go/uv-tools
+          key: tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ hashFiles('.bingo/**', 'Makefile') }}
+          restore-keys: |
+            tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-
+
       - name: Run the repository quality gate
         run: make quality-gate

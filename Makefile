@@ -46,17 +46,28 @@ $(TOOLS_DIR)/gofumpt: $(GOFUMPT)
 $(TOOLS_DIR)/gitleaks: $(GITLEAKS)
 	@ln -sf "$(notdir $(GITLEAKS))" "$@"
 
-# rumdl ships as a PyPI wheel, not a Go module, so bingo cannot pin it. A
-# version-stamped sentinel gives the same reinstall-on-bump behaviour: bumping
-# RUMDL_VERSION names a stamp that does not exist yet, which reruns the install.
+# Relink a bare bingo so maintainers can change a pin without hard-coding the
+# bingo version; this is not part of `tools` because only pin changes need it.
+$(TOOLS_DIR)/bingo: $(BINGO)
+	@ln -sf "$(notdir $(BINGO))" "$@"
+
+# rumdl ships as a PyPI wheel, not a Go module, so bingo cannot pin it. The
+# install recipe lives on the binary target so a fresh checkout or a deleted
+# binary always reinstalls; the version-stamped prerequisite adds the
+# reinstall-on-bump behaviour, since bumping RUMDL_VERSION names a stamp that
+# does not exist yet and is therefore newer than the binary. The recipe touches
+# the stamp before installing so the freshly written binary is the newest file,
+# which keeps an unchanged pin a no-op instead of reinstalling on every run.
 $(RUMDL): $(RUMDL_STAMP)
-$(RUMDL_STAMP):
 	@command -v uv >/dev/null || { echo "uv is required to install rumdl" >&2; exit 1; }
 	@mkdir -p "$(TOOLS_DIR)" "$(UV_TOOLS_DIR)"
+	@rm -f "$(UV_TOOLS_DIR)"/.rumdl-* && touch "$(RUMDL_STAMP)"
 	UV_TOOL_DIR="$(CURDIR)/$(UV_TOOLS_DIR)" \
 		UV_TOOL_BIN_DIR="$(CURDIR)/$(TOOLS_DIR)" \
 		uv tool install --force "rumdl==$(RUMDL_VERSION)"
-	@rm -f "$(UV_TOOLS_DIR)"/.rumdl-* && touch "$(RUMDL_STAMP)"
+
+$(RUMDL_STAMP):
+	@mkdir -p "$(UV_TOOLS_DIR)" && touch "$@"
 
 fmt: $(GOFUMPT) $(RUMDL) ## Format Go source and Markdown in place
 	"$(GOFUMPT)" -w .

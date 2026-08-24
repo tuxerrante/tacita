@@ -29,9 +29,16 @@ Development tools are pinned and installed under `.go/bin`. The Go tools
 version lives in its own module under `.bingo/`, and `make tools` rebuilds a tool
 whenever its `.bingo/<tool>.mod` changes, so a version bump takes effect without
 `make clean`. `rumdl` is pinned by `RUMDL_VERSION` in the `Makefile` and
-installed with `uv`. To change a Go tool version, run
-`GOBIN="$PWD/.go/bin" bingo get <tool>@<version>` (installing bingo first with
-`make "$PWD/.go/bin/bingo-<version>"`) and commit the updated `.bingo/` files.
+installed with `uv`. To change a Go tool version, build the pinned bingo, then
+use it to rewrite the pin and commit the updated `.bingo/` files:
+
+```bash
+make .go/bin/bingo
+GOBIN="$PWD/.go/bin" .go/bin/bingo get <tool>@<version>
+```
+
+`make .go/bin/bingo` relinks a bare `bingo` to the pinned versioned build, so the
+command above never hard-codes the bingo version.
 
 ## 🔍 Validation
 

@@ -47,5 +47,38 @@ jobs:
           cache-dependency-glob: Makefile
           enable-cache: true
 
+      # Cache the compiled tool binaries so the quality gate skips rebuilding
+      # gofumpt, gitleaks, golangci-lint and govulncheck on every run; a cold
+      # build of golangci-lint alone costs the bulk of `make tools`. The key
+      # tracks exactly the inputs that change a binary: the bingo manifests
+      # (Go tool pins), the Makefile (the rumdl pin) and go.mod (the toolchain
+      # the binaries are built with), qualified by runner OS and arch because
+      # the binaries are platform-specific.
+      #
+      # No restore-keys on purpose: only an exact match is safe to reuse. A
+      # prefix fallback could restore a binary whose pin changed in a way Make
+      # does not track as a prerequisite -- a .bingo/*.sum bump at an unchanged
+      # tool version, or a Makefile-only change to the rumdl install recipe --
+      # and silently run a stale tool. Any such change misses the exact key and
+      # rebuilds from source instead.
+      - name: Cache pinned tool binaries
+        id: tool-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .go/bin
+            .go/uv-tools
+          key: tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.mod') }}-${{ hashFiles('.bingo/**', 'Makefile') }}
+
+      # actions/cache restores archived mtimes, but actions/checkout writes the
+      # .bingo/*.mod manifests with fresh ones, so Make would see every restored
+      # tool as older than its manifest and recompile it -- defeating the cache.
+      # On an exact hit the restored binaries match the committed pins, so mark
+      # them newer than the manifests to register them as up to date. This runs
+      # only on an exact hit, so a stale binary can never be marked current.
+      - name: Mark cached tools up to date
+        if: steps.tool-cache.outputs.cache-hit == 'true'
+        run: touch .go/bin/*
+
       - name: Run the repository quality gate
         run: make quality-gate

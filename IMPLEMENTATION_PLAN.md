@@ -15,7 +15,7 @@ definition, experimental protocol, or architecture:
 - [`docs/architecture.md`](docs/architecture.md) defines implementation,
   security, and testing contracts.
 
-## Goal
+## 🎯 Goal
 
 Build the smallest evidence-first vertical slice that can answer:
 
@@ -36,7 +36,7 @@ Product ratification, product manifests, and enforcement begin only after the
 experiment passes its frozen gates. Experiment review manifests are evidence
 artifacts, not product policy.
 
-## Current implementation
+## 🚦 Current implementation
 
 Implemented:
 
@@ -76,7 +76,7 @@ contract is frozen. The implemented Git boundary is likewise provisional and
 still under review; each review pass so far has found and fixed a defect,
 recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
-## Frozen Milestone 0 decisions
+## 📊 Frozen Milestone 0 decisions
 
 Milestone 1 must implement these contracts without changing them from
 development or holdout results:
@@ -104,47 +104,35 @@ made after human review of public history but before Tacita produced Kapparmor
 candidate or metric output. The experiment is re-frozen; later changes require
 a newly preregistered run. Kapparmor results cannot modify this table.
 
-## Next implementation step
+## 🧭 Next implementation steps
 
-Continue Milestone 1 from the smallest independently testable Git boundary. A
-design review before implementation replaced the earlier "extend the executor
-into a history runner" step with a sequence that fixes the boundary before
-building on it. Each entry is one pull request with one motivation, and each
-one is stacked on the previous:
+Build Milestone 2 as two dependency-safe pull requests with one motivation
+each. Both operate on synthetic transaction sequences and neither reads the
+development or holdout corpus:
 
-1. completed: supported-environment validation and full commit resolution;
-2. completed: target the repository explicitly so Git cannot discover an
-   ancestor repository, per
-   [repository targeting](docs/architecture.md#repository-targeting);
-3. completed: carry the classified target and validated environment in a
-   run-scoped repository value, so object access cannot precede validation, per
-   [package boundaries](docs/architecture.md#package-boundaries);
-4. completed: reject shallow, grafted, alternate-backed, and promisor
-   repositories before traversal, and carry that preflight result in the same
-   value;
-5. completed: make bounded-output overflow tear the child down instead of
-   discarding the overflow;
-6. completed: stream and validate `rev-list` first-parent event metadata;
-7. completed: stream `diff-tree` records into normalized events and exclusion
-   diagnostics.
-8. completed: classify machine-readable missing objects from first-parent
-   commit traversal as an incomplete repository and preserve unclassifiable Git
-   failures conservatively;
-9. completed: project normalized event paths into deduplicated component
-   transactions under the frozen component-projection, exclusion, and resource
-   contracts.
-10. completed: enforce repository-wide distinct path and component identity
-    budgets at the transaction-stream boundary.
+1. add the pure `internal/mining` accumulation fold: intern component
+   identities, maintain component-keyed opportunity and weighted occurrence
+   sums, maintain pair-keyed raw and weighted support, compute all three frozen
+   size weights and their run-wide eligible-transaction totals side by side,
+   and enforce the directional-observation and distinct-pair budgets with typed
+   errors;
+2. derive finite descriptive metrics from one completed aggregate, apply the
+   fixed raw-support floor and all 81 post-aggregation configurations, and rank
+   eligible candidates with the frozen byte-level tie-breakers.
 
-Steps 6 and 7 are not split into a generic runner plus a parser. The two
-commands have materially different output shapes and consumers, and a runner
-that returned buffered output would violate the
-[bounded streaming contract](docs/architecture.md#bounded-streaming-contract).
+The first pull request owns accumulation and resource exhaustion. The second
+owns candidate eligibility and ordering. Neither introduces temporal cutoffs,
+baselines, controls, report encoding, CLI wiring, concurrency, or runtime
+dependencies.
 
-Validate every step against real temporary repositories before adding mining.
+Development calibration is not a Milestone 2 shortcut over final-history
+aggregates. Its selector requires temporal partitions, baselines, controls, and
+canonical reports, so the development lock is produced in Milestone 3 before
+any holdout report. Moving that work changes only the operational milestone
+boundary; the frozen grid, selector, corpus, report, and holdout rules remain
+unchanged.
 
-Do not implement candidate aggregation, calibration, profiles, or holdout
-evaluation in Milestone 1.
+## 🔍 Design review records
 
 ### Milestone 1 design review record
 
@@ -165,7 +153,26 @@ These are implementation and safety corrections. They change no corpus ID,
 threshold, report field, resource budget, or component or history semantics, so
 the Milestone 0 freeze is unaffected.
 
-## Milestones
+### Milestone 2 design review record
+
+Two independent pre-implementation reviews found that the original direct path
+from aggregation to a development lock omitted required temporal and reporting
+work. They recorded these outcomes:
+
+| Question | Outcome |
+| --- | --- |
+| Can final-history aggregates select the development lock? | No. The frozen selector requires cutoff adherence, frequent-consequent comparison, coverage, adjacent-cutoff Jaccard, controls, and canonical development reports. |
+| Does an eligible transaction's stream position equal its integration event index? | No. Cutoffs are defined over every first-parent event before exclusions, so Milestone 3 must map transaction object IDs to the complete event sequence. |
+| Should `internal/gitlog.Transaction` gain an event index? | No. Milestone 1 is complete, and the full event sequence already lets `internal/backtest` own that composition without reopening the ingestion boundary. |
+| Must Milestone 2 retain and shuffle transactions? | No. Replay over the hash-shuffled order is a Milestone 3 control; the Milestone 2 fold remains a pure function of one supplied sequence. |
+| Are component exposure and prevalence separate accumulated values? | No. For each weight mode, one component occurrence sum is used as antecedent exposure and consequent prevalence numerator. |
+| Does the raw-support floor reduce pair budget accounting? | No. Observation and distinct-pair budgets apply while folding; raw support of at least three is a later candidate-eligibility filter. |
+
+These findings split independently testable responsibilities and correct the
+milestone boundary. They change no frozen metric, threshold, configuration,
+corpus ID, report field, resource budget, or Git or component semantic.
+
+## 🚦 Milestones
 
 ### 0. Freeze the experiment — complete 2026-08-16
 
@@ -202,27 +209,30 @@ and component identity budgets. Milestone 1 implementation is complete.
 ### 2. Descriptive miner
 
 Starting from normalized component transactions, deliver directional pair
-aggregation, raw and weighted measures, stable ranking, the frozen development
-grid, tests, and benchmarks.
+aggregation, raw and weighted measures, stable ranking, all 81 frozen
+configurations, tests, and benchmarks.
 
 Aggregation follows the single-pass
 [aggregation strategy](docs/architecture.md#aggregation-strategy): one ordered
 fold with component-keyed and pair-keyed state, three weighted sums, and the
 grid derived by post-aggregation filtering. There is no in-process fan-out.
 
-Exit: exact repeated results, bounded behavior, and a configuration lock
-selected from the development corpus without holdout access.
+Exit: exact repeated full-history aggregates and ranked candidates for every
+configuration, bounded behavior, and no development or holdout corpus access.
 
-### 3. Temporal backtest
+### 3. Temporal calibration and backtest
 
-Deliver the frozen rolling cutoffs and configuration, trivial baselines,
-blinded human review, negative and stress controls, and the configuration
-holdout evidence bundle.
+Deliver the frozen rolling cutoffs, trivial baselines, negative and stress
+controls, canonical analytical reports, development calibration and
+configuration lock, blinded human review, and the configuration holdout
+evidence bundle.
 
 The four cutoffs are snapshots of the same fold, not four runs. The
 hash-shuffled control reuses that fold over its own event ordering.
 
-Exit: a complete go/no-go result without post-holdout threshold changes.
+The development lock must exist before any holdout report is generated. Exit:
+a complete go/no-go result without holdout-informed configuration or threshold
+changes.
 
 ### 4. Cold-start profile evaluation
 
@@ -244,7 +254,7 @@ Choose one:
 
 Enforcement never starts automatically.
 
-## Deferred roadmap
+## 🧭 Deferred roadmap
 
 After a positive Milestone 5 decision, consider in order:
 
@@ -261,7 +271,7 @@ After a positive Milestone 5 decision, consider in order:
 Kubernetes policy, opaque model scoring, network/LLM dependencies in analysis,
 and authorship detection are outside the product boundary.
 
-## Change discipline
+## 🔀 Change discipline
 
 - Update this file when milestone status, blockers, or implementation order
   changes.

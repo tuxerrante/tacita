@@ -1,8 +1,8 @@
 # Tacita Implementation Plan
 
-Status: Milestone 0 experiment contract amended and re-frozen
+Status: Milestone 0 contract re-frozen; Milestone 1 ingestion complete
 
-Active milestone: Milestone 1 — safe Git ingestion
+Active milestone: Milestone 2 — descriptive miner
 
 Product implementation: limited to the frozen evidence-first experiment
 
@@ -178,7 +178,7 @@ Deliver:
 Exit met: all inputs and acceptance criteria are fixed before holdout results
 are observed.
 
-### 1. Safe Git ingestion
+### 1. Safe Git ingestion — complete 2026-08-25
 
 Deliver:
 

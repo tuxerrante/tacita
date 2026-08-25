@@ -60,6 +60,9 @@ make quality-gate
 
 `make check` uses incremental linting when a Git baseline exists.
 `make quality-gate` always performs the full validation suite.
+For a change whose every file is Markdown, run `make markdown-gate` instead;
+it checks only Markdown formatting and lint. Mixed changes still require the
+full gate.
 
 Neither gate runs the fuzzing engine, because a mutation search is
 non-deterministic and cannot decide whether a change may merge. A scheduled
@@ -81,7 +84,8 @@ each layer builds and passes its own gate.
 
 Before requesting review:
 
-1. run `make quality-gate`;
+1. run `make markdown-gate` for a Markdown-only diff, or
+   `make quality-gate` for every other diff;
 2. complete every section of the pull request template, including side
    effects, test levels, the strongest opposing argument, residual risk, and
    any human decision the reviewer must make.

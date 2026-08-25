@@ -54,7 +54,8 @@ covered and ➖ for not applicable. The testing contract lives in
 
 ## 🔍 Validation
 
-- [ ] `make quality-gate`
+- [ ] `make markdown-gate` for a Markdown-only diff, or `make quality-gate`
+  otherwise.
 - [ ] New tests fail against the unfixed code.
 
 <!--

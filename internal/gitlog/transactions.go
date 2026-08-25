@@ -26,6 +26,10 @@ type Transaction struct {
 
 // EachTransaction streams normalized component transactions in chain order.
 //
+// events must be the exact sequence returned by [Repository.FirstParentEvents].
+// Every diff-tree boundary is matched against it, so a skipped, repeated, or
+// reordered event fails instead of receiving another event's paths.
+//
 // Component projection is lexical and never accesses the filesystem. An event
 // exceeding the frozen component limit is excluded whole and counted in the
 // returned diagnostics. Diagnostics are complete only when the error is nil.

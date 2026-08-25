@@ -60,6 +60,7 @@ Implemented:
 
 Not implemented:
 
+- missing-object classification during history traversal;
 - component projection or transaction aggregation;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
@@ -120,8 +121,12 @@ one is stacked on the previous:
 5. completed: make bounded-output overflow tear the child down instead of
    discarding the overflow;
 6. completed: stream and validate `rev-list` first-parent event metadata;
-7. stream `diff-tree` records into normalized events and exclusion
+7. completed: stream `diff-tree` records into normalized events and exclusion
    diagnostics.
+8. classify traversal failures caused by missing objects as an incomplete
+   repository;
+9. project normalized event paths into deduplicated component transactions
+   under the frozen component-projection, exclusion, and resource contracts.
 
 Steps 6 and 7 are not split into a generic runner plus a parser. The two
 commands have materially different output shapes and consumers, and a runner
@@ -178,15 +183,17 @@ Deliver:
 Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
-The first learning exercise should implement `ResolveCommit` under the frozen
-environment, history, error, and budget contracts. That exercise is complete;
-rejecting known-incomplete repositories and history traversal remain in this
-milestone.
+Revision resolution and preflight against known incompleteness mechanisms are
+complete. Streamed history traversal is implemented, but classifying traversal
+failures caused by missing objects remains outstanding. That classification is
+the next learning exercise; component projection from normalized event paths
+into bounded, deduplicated component transactions follows it.
 
 ### 2. Descriptive miner
 
-Deliver component projection, directional pair aggregation, raw and weighted
-measures, stable ranking, the frozen development grid, tests, and benchmarks.
+Starting from normalized component transactions, deliver directional pair
+aggregation, raw and weighted measures, stable ranking, the frozen development
+grid, tests, and benchmarks.
 
 Aggregation follows the single-pass
 [aggregation strategy](docs/architecture.md#aggregation-strategy): one ordered

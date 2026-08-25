@@ -190,8 +190,9 @@ performs the frozen resolution. Together they:
 
 The caller owns the elapsed-time deadline. Successful resolution establishes an
 immutable commit identity but does not establish complete history. Preflight
-removes the known incompleteness mechanisms; missing-object classification
-during traversal remains outstanding.
+removes the known incompleteness mechanisms. A failed first-parent traversal
+uses bounded, machine-readable diagnostics to classify proven unavailable
+objects; failures without that evidence remain conservative Git failures.
 
 `FirstParentEvents` implements the first streamed boundary. It runs the frozen
 `rev-list` command and returns one event per first-parent commit, root first,
@@ -411,8 +412,8 @@ Shallow history is rejected in the first experiment.
 
 ### Frozen Git data flow
 
-Use two bounded Git commands with the frozen environment, repository target,
-and `-c` overrides:
+The success path uses two bounded Git commands with the frozen environment,
+repository target, and `-c` overrides:
 
 ```text
 git <repository-target> rev-list \
@@ -423,6 +424,18 @@ git <repository-target> diff-tree \
   --no-renames --no-textconv --no-ext-diff \
   --diff-merges=first-parent
 ```
+
+If the first command exits unsuccessfully, Tacita may run one bounded
+diagnostic over the same first-parent walk:
+
+```text
+git <repository-target> rev-list \
+  --quiet --first-parent --missing=print <resolved-object-id>
+```
+
+This failure-only command does not contribute events or paths. Its output is
+used solely for the conservative incomplete-repository classification described
+in [supported experiment environment](#supported-experiment-environment).
 
 The first command is line-oriented only because every field is a validated
 full hexadecimal object ID. It defines event order, first parent, and event

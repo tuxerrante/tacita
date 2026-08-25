@@ -8,6 +8,11 @@ import (
 const (
 	// maxEventComponents is the frozen cap on distinct components in one event.
 	maxEventComponents = 100
+	// maxPathIdentities is the frozen cap on distinct eligible paths in one run.
+	maxPathIdentities = 2_000_000
+	// maxComponentIdentities is the frozen cap on distinct eligible components
+	// in one run.
+	maxComponentIdentities = 50_000
 
 	rootComponent = "."
 )
@@ -32,7 +37,9 @@ type Transaction struct {
 //
 // Component projection is lexical and never accesses the filesystem. An event
 // exceeding the frozen component limit is excluded whole and counted in the
-// returned diagnostics. Diagnostics are complete only when the error is nil.
+// returned diagnostics. Distinct path and component identities are bounded
+// across eligible transactions before the visitor receives them. Diagnostics
+// are complete only when the error is nil.
 func (r *Repository) EachTransaction(
 	ctx context.Context,
 	events []Event,
@@ -45,6 +52,8 @@ func (r *Repository) EachTransaction(
 		maxStreamOutput,
 		maxEventPaths,
 		maxEventComponents,
+		maxPathIdentities,
+		maxComponentIdentities,
 	)
 }
 
@@ -57,8 +66,11 @@ func (r *Repository) eachTransaction(
 	outputLimit int,
 	pathLimit int,
 	componentLimit int,
+	pathIdentityLimit int,
+	componentIdentityLimit int,
 ) (Diagnostics, error) {
 	var componentLimitExclusions uint64
+	budget := newIdentityBudget(pathIdentityLimit, componentIdentityLimit)
 
 	diagnostics, err := r.eachEventChange(
 		ctx,
@@ -68,6 +80,10 @@ func (r *Repository) eachTransaction(
 			if !ok {
 				componentLimitExclusions++
 				return nil
+			}
+
+			if err := budget.observe(transaction); err != nil {
+				return err
 			}
 
 			return visit(transaction)
@@ -82,6 +98,53 @@ func (r *Repository) eachTransaction(
 	diagnostics.record(EventScope, EventComponentLimitReason, componentLimitExclusions)
 
 	return diagnostics, nil
+}
+
+type identityBudget struct {
+	paths          map[string]struct{}
+	components     map[string]struct{}
+	pathLimit      int
+	componentLimit int
+}
+
+func newIdentityBudget(pathLimit int, componentLimit int) *identityBudget {
+	return &identityBudget{
+		paths:          make(map[string]struct{}),
+		components:     make(map[string]struct{}),
+		pathLimit:      pathLimit,
+		componentLimit: componentLimit,
+	}
+}
+
+func (b *identityBudget) observe(transaction Transaction) error {
+	for _, path := range transaction.Paths {
+		if _, exists := b.paths[path]; exists {
+			continue
+		}
+
+		observed := len(b.paths) + 1
+		if observed > b.pathLimit {
+			return &PathIdentityLimitError{Observed: observed, Limit: b.pathLimit}
+		}
+		b.paths[path] = struct{}{}
+	}
+
+	for _, component := range transaction.Components {
+		if _, exists := b.components[component]; exists {
+			continue
+		}
+
+		observed := len(b.components) + 1
+		if observed > b.componentLimit {
+			return &ComponentIdentityLimitError{
+				Observed: observed,
+				Limit:    b.componentLimit,
+			}
+		}
+		b.components[component] = struct{}{}
+	}
+
+	return nil
 }
 
 func projectTransaction(paths EventPaths, componentLimit int) (Transaction, bool) {

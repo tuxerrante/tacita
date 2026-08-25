@@ -56,13 +56,14 @@ Implemented:
   commit traversal, with conservative fallback for unclassifiable Git failures;
 - streamed `diff-tree` records normalized into per-event changed paths, with
   disjoint exclusion counts and no cross-event accumulation;
+- lexical path-to-component projection into bounded, deduplicated transactions;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- component projection or transaction aggregation;
+- transaction aggregation;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
 - report schema or rendering;
@@ -127,8 +128,9 @@ one is stacked on the previous:
 8. completed: classify machine-readable missing objects from first-parent
    commit traversal as an incomplete repository and preserve unclassifiable Git
    failures conservatively;
-9. project normalized event paths into deduplicated component transactions
-   under the frozen component-projection, exclusion, and resource contracts.
+9. completed: project normalized event paths into deduplicated component
+   transactions under the frozen component-projection, exclusion, and resource
+   contracts.
 
 Steps 6 and 7 are not split into a generic runner plus a parser. The two
 commands have materially different output shapes and consumers, and a runner
@@ -190,7 +192,8 @@ streamed history traversal are complete. Missing objects exposed by
 first-parent commit traversal are classified from machine-readable Git output;
 unclassifiable traversal failures remain conservative Git failures. Component
 projection from normalized event paths into bounded, deduplicated component
-transactions is the next learning exercise.
+transactions is also implemented. Global run-budget ownership remains the next
+Milestone 1 exit decision.
 
 ### 2. Descriptive miner
 

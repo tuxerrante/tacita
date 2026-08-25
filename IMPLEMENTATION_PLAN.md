@@ -60,6 +60,7 @@ Implemented:
 
 Not implemented:
 
+- missing-object classification during history traversal;
 - component projection or transaction aggregation;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
@@ -122,7 +123,9 @@ one is stacked on the previous:
 6. completed: stream and validate `rev-list` first-parent event metadata;
 7. completed: stream `diff-tree` records into normalized events and exclusion
    diagnostics.
-8. project normalized event paths into deduplicated component transactions
+8. classify traversal failures caused by missing objects as an incomplete
+   repository;
+9. project normalized event paths into deduplicated component transactions
    under the frozen component-projection, exclusion, and resource contracts.
 
 Steps 6 and 7 are not split into a generic runner plus a parser. The two
@@ -180,10 +183,11 @@ Deliver:
 Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
-Revision resolution, preflight against known incompleteness mechanisms, and
-history traversal are complete. Component projection from normalized event
-paths into bounded, deduplicated component transactions under the frozen
-contracts is the next learning exercise.
+Revision resolution and preflight against known incompleteness mechanisms are
+complete. Streamed history traversal is implemented, but classifying traversal
+failures caused by missing objects remains outstanding. That classification is
+the next learning exercise; component projection from normalized event paths
+into bounded, deduplicated component transactions follows it.
 
 ### 2. Descriptive miner
 

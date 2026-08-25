@@ -180,15 +180,16 @@ Deliver:
 Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
-Revision resolution, repository-completeness preflight, and history traversal
-are complete. Component projection from normalized event paths into bounded,
-deduplicated component transactions under the frozen contracts is the next
-learning exercise.
+Revision resolution, preflight against known incompleteness mechanisms, and
+history traversal are complete. Component projection from normalized event
+paths into bounded, deduplicated component transactions under the frozen
+contracts is the next learning exercise.
 
 ### 2. Descriptive miner
 
-Deliver component projection, directional pair aggregation, raw and weighted
-measures, stable ranking, the frozen development grid, tests, and benchmarks.
+Starting from normalized component transactions, deliver directional pair
+aggregation, raw and weighted measures, stable ranking, the frozen development
+grid, tests, and benchmarks.
 
 Aggregation follows the single-pass
 [aggregation strategy](docs/architecture.md#aggregation-strategy): one ordered

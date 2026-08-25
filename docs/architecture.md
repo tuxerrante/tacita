@@ -723,12 +723,18 @@ over bytes or an `io.Reader`, while opening and running stay where they are.
 The repository gates are:
 
 ```text
+make markdown-gate
 make check
 make quality-gate
 ```
 
-The full gate includes formatting, vet, lint, race tests, coverage, static
-build, and reachable-vulnerability analysis.
+`markdown-gate` runs only the pinned Markdown formatter check and linter. It is
+sufficient only when every changed file is Markdown. Pull-request CI determines
+that scope from the exact base and head trees; an empty or mixed diff fails
+closed to the full gate. Pushes to `main` always run the full gate.
+
+The full gate includes Go and Markdown formatting, vet, lint, race tests,
+coverage, static build, secret scanning, and reachable-vulnerability analysis.
 
 ## Concurrency
 

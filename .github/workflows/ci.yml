@@ -30,9 +30,39 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Classify validation scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "markdown_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed=false
+          markdown_only=true
+          git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/changed-files"
+          while IFS= read -r -d '' path; do
+            changed=true
+            if [[ "$path" != *.md ]]; then
+              markdown_only=false
+            fi
+          done < "$RUNNER_TEMP/changed-files"
+
+          if [[ "$changed" != true ]]; then
+            markdown_only=false
+          fi
+          echo "markdown_only=$markdown_only" >> "$GITHUB_OUTPUT"
+
       - name: Set up Go
+        if: steps.scope.outputs.markdown_only != 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           cache: true
@@ -63,6 +93,7 @@ jobs:
       # rebuilds from source instead.
       - name: Cache pinned tool binaries
         id: tool-cache
+        if: steps.scope.outputs.markdown_only != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -77,8 +108,13 @@ jobs:
       # them newer than the manifests to register them as up to date. This runs
       # only on an exact hit, so a stale binary can never be marked current.
       - name: Mark cached tools up to date
-        if: steps.tool-cache.outputs.cache-hit == 'true'
+        if: steps.scope.outputs.markdown_only != 'true' && steps.tool-cache.outputs.cache-hit == 'true'
         run: touch .go/bin/*
 
       - name: Run the repository quality gate
+        if: steps.scope.outputs.markdown_only != 'true'
         run: make quality-gate
+
+      - name: Run the Markdown-only gate
+        if: steps.scope.outputs.markdown_only == 'true'
+        run: make markdown-gate

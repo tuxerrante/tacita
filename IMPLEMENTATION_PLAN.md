@@ -57,6 +57,8 @@ Implemented:
 - streamed `diff-tree` records normalized into per-event changed paths, with
   disjoint exclusion counts and no cross-event accumulation;
 - lexical path-to-component projection into bounded, deduplicated transactions;
+- repository-wide distinct path and component identity budgets enforced before
+  transaction visitors observe an over-limit event;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
@@ -131,6 +133,8 @@ one is stacked on the previous:
 9. completed: project normalized event paths into deduplicated component
    transactions under the frozen component-projection, exclusion, and resource
    contracts.
+10. completed: enforce repository-wide distinct path and component identity
+    budgets at the transaction-stream boundary.
 
 Steps 6 and 7 are not split into a generic runner plus a parser. The two
 commands have materially different output shapes and consumers, and a runner
@@ -192,8 +196,8 @@ streamed history traversal are complete. Missing objects exposed by
 first-parent commit traversal are classified from machine-readable Git output;
 unclassifiable traversal failures remain conservative Git failures. Component
 projection from normalized event paths into bounded, deduplicated component
-transactions is also implemented. Global run-budget ownership remains the next
-Milestone 1 exit decision.
+transactions is also implemented, and that stream owns the frozen global path
+and component identity budgets. Milestone 1 implementation is complete.
 
 ### 2. Descriptive miner
 

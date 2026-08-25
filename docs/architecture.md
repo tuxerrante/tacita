@@ -549,6 +549,14 @@ Generated files, lockfiles, fixtures, documentation, and non-Go languages are
 included unless they match a frozen path exclusion above. The first experiment
 does not infer generated status from names or contents.
 
+The transaction stream owns the repository-wide distinct-path and
+distinct-component budgets. It counts identities only from eligible
+transactions, after per-event exclusions and before invoking the visitor.
+Repeated identities across events count once. Path identities are checked
+before component identities, and the first observed identity over either limit
+fails the run with its observed count and limit. No transaction that crosses a
+global identity limit reaches the visitor.
+
 ## Aggregation strategy
 
 The [experiment protocol](experiment.md) owns the metric formulas. This section

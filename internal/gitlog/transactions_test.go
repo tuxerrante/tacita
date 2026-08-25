@@ -159,6 +159,8 @@ func TestEachTransactionMergesDiagnosticsAndContinuesAfterComponentLimit(t *test
 		maxStreamOutput,
 		maxEventPaths,
 		2,
+		3,
+		3,
 	)
 	if err != nil {
 		t.Fatalf("eachTransaction() error = %v", err)
@@ -182,6 +184,117 @@ func TestEachTransactionMergesDiagnosticsAndContinuesAfterComponentLimit(t *test
 		{Scope: EventScope, Reason: EventComponentLimitReason}: 1,
 		{Scope: PathScope, Reason: VendorPathReason}:           1,
 	})
+}
+
+func TestEachTransactionEnforcesGlobalIdentityLimitsBeforeVisiting(t *testing.T) {
+	tests := []struct {
+		name           string
+		pathLimit      int
+		componentLimit int
+		wantErr        error
+		pathBudget     bool
+	}{
+		{
+			name:           "path identities",
+			pathLimit:      2,
+			componentLimit: 10,
+			wantErr:        ErrPathIdentityLimit,
+			pathBudget:     true,
+		},
+		{
+			name:           "component identities",
+			pathLimit:      10,
+			componentLimit: 2,
+			wantErr:        ErrComponentIdentityLimit,
+		},
+		{
+			name:           "path precedence when both exceed",
+			pathLimit:      2,
+			componentLimit: 2,
+			wantErr:        ErrPathIdentityLimit,
+			pathBudget:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repository := newChangeTestRepository(t)
+			commitTree(t, repository, map[string]string{"a/file.go": "1"})
+			commitTree(t, repository, map[string]string{
+				"a/file.go": "1",
+				"b/file.go": "1",
+			})
+			commitTree(t, repository, map[string]string{
+				"a/file.go": "1",
+				"b/file.go": "1",
+				"c/file.go": "1",
+			})
+
+			opened := openTestRepository(t, repository)
+			events, err := opened.FirstParentEvents(t.Context(), headCommit(t, repository))
+			if err != nil {
+				t.Fatalf("FirstParentEvents() error = %v", err)
+			}
+
+			visited := 0
+			diagnostics, err := opened.eachTransaction(
+				t.Context(),
+				events,
+				func(Transaction) error {
+					visited++
+					return nil
+				},
+				maxStreamOutput,
+				maxEventPaths,
+				maxEventComponents,
+				tt.pathLimit,
+				tt.componentLimit,
+			)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("eachTransaction() error = %v, want %v", err, tt.wantErr)
+			}
+			if visited != 2 {
+				t.Errorf("visited %d transactions, want 2 before the limit failure", visited)
+			}
+			if diagnostics != nil {
+				t.Errorf("eachTransaction() diagnostics = %v, want nil after an error", diagnostics)
+			}
+
+			var pathErr *PathIdentityLimitError
+			var componentErr *ComponentIdentityLimitError
+			if tt.pathBudget {
+				if !errors.As(err, &pathErr) {
+					t.Fatalf("eachTransaction() error = %v, want *PathIdentityLimitError", err)
+				}
+				if pathErr.Observed != 3 || pathErr.Limit != 2 {
+					t.Errorf("PathIdentityLimitError = %+v, want observed 3 limit 2", pathErr)
+				}
+			} else {
+				if !errors.As(err, &componentErr) {
+					t.Fatalf("eachTransaction() error = %v, want *ComponentIdentityLimitError", err)
+				}
+				if componentErr.Observed != 3 || componentErr.Limit != 2 {
+					t.Errorf("ComponentIdentityLimitError = %+v, want observed 3 limit 2", componentErr)
+				}
+			}
+		})
+	}
+}
+
+func TestIdentityBudgetDeduplicatesAcrossTransactions(t *testing.T) {
+	budget := newIdentityBudget(1, 1)
+	transaction := Transaction{
+		Paths:      []string{"a/file.go"},
+		Components: []string{"a"},
+	}
+
+	if err := budget.observe(transaction); err != nil {
+		t.Fatalf("first observe() error = %v", err)
+	}
+	if err := budget.observe(transaction); err != nil {
+		t.Fatalf("duplicate observe() error = %v", err)
+	}
 }
 
 func TestEachTransactionReportsVisitorFailureWithoutPartialDiagnostics(t *testing.T) {

@@ -31,6 +31,10 @@ var (
 	ErrGitOutputLimit = errors.New("git output limit exceeded")
 	// ErrEventLimit identifies history larger than the frozen scan budget.
 	ErrEventLimit = errors.New("integration event limit exceeded")
+	// ErrPathIdentityLimit identifies too many distinct eligible paths in one run.
+	ErrPathIdentityLimit = errors.New("distinct path identity limit exceeded")
+	// ErrComponentIdentityLimit identifies too many distinct eligible components in one run.
+	ErrComponentIdentityLimit = errors.New("distinct component identity limit exceeded")
 
 	// errEndOfStream marks the one position where a streamed grammar may end.
 	// It never reaches a caller.
@@ -101,4 +105,35 @@ func (e *EventLimitError) Error() string {
 
 func (e *EventLimitError) Is(target error) bool {
 	return target == ErrEventLimit
+}
+
+// PathIdentityLimitError reports a repository run whose eligible transactions
+// introduced more distinct paths than the frozen global budget.
+type PathIdentityLimitError struct {
+	Observed int
+	Limit    int
+}
+
+func (e *PathIdentityLimitError) Error() string {
+	return fmt.Sprintf("distinct path identities reached %d, limit %d", e.Observed, e.Limit)
+}
+
+func (e *PathIdentityLimitError) Is(target error) bool {
+	return target == ErrPathIdentityLimit
+}
+
+// ComponentIdentityLimitError reports a repository run whose eligible
+// transactions introduced more distinct components than the frozen global
+// budget.
+type ComponentIdentityLimitError struct {
+	Observed int
+	Limit    int
+}
+
+func (e *ComponentIdentityLimitError) Error() string {
+	return fmt.Sprintf("distinct component identities reached %d, limit %d", e.Observed, e.Limit)
+}
+
+func (e *ComponentIdentityLimitError) Is(target error) bool {
+	return target == ErrComponentIdentityLimit
 }

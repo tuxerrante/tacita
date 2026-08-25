@@ -52,17 +52,16 @@ make lint-new
 make check
 ```
 
-Before requesting review, run:
+Before requesting review, run exactly one gate:
 
 ```bash
-make quality-gate
+make markdown-gate # when every changed file is Markdown
+make quality-gate  # for every mixed or non-Markdown change
 ```
 
 `make check` uses incremental linting when a Git baseline exists.
+`make markdown-gate` checks only Markdown formatting and lint.
 `make quality-gate` always performs the full validation suite.
-For a change whose every file is Markdown, run `make markdown-gate` instead;
-it checks only Markdown formatting and lint. Mixed changes still require the
-full gate.
 
 Neither gate runs the fuzzing engine, because a mutation search is
 non-deterministic and cannot decide whether a change may merge. A scheduled

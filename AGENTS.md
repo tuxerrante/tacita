@@ -48,12 +48,16 @@ Requirements are Go 1.27, Git, GNU Make, and `uv`.
 
 ```bash
 make fmt           # format Go source and Markdown
+make markdown-gate # complete gate for a Markdown-only diff
 make markdown-check # lint Markdown
 make test          # unit and integration tests
 make lint-new      # lint changes since LINT_BASE
 make check         # fast local gate
 make quality-gate  # full pre-publication gate
 ```
+
+Use `make markdown-gate` only when every changed file is Markdown. Any mixed or
+non-Markdown change requires `make quality-gate`.
 
 Pinned tools are installed under `.go/bin` and are not runtime dependencies.
 Run focused tests while iterating:

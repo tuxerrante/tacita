@@ -104,7 +104,7 @@ made after human review of public history but before Tacita produced Kapparmor
 candidate or metric output. The experiment is re-frozen; later changes require
 a newly preregistered run. Kapparmor results cannot modify this table.
 
-## Next implementation step
+## Completed Milestone 1 implementation sequence
 
 Continue Milestone 1 from the smallest independently testable Git boundary. A
 design review before implementation replaced the earlier "extend the executor

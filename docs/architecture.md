@@ -585,6 +585,7 @@ are not all per-pair:
 
 | State | Key | Holds | Bound |
 | --- | --- | --- | ---: |
+| Run | repository run | eligible transaction count and three eligible-weight totals | 1 |
 | Component | component identity | opportunity, exposure, prevalence numerator | 50,000 |
 | Pair | ordered component pair | support | 2,000,000 |
 

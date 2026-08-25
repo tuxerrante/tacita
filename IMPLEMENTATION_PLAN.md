@@ -59,14 +59,17 @@ Implemented:
 - lexical path-to-component projection into bounded, deduplicated transactions;
 - repository-wide distinct path and component identity budgets enforced before
   transaction visitors observe an over-limit event;
+- bounded single-pass descriptive accumulation with interned components, raw
+  and weighted state for all three size modes, detached snapshots, and atomic
+  transaction, component, observation, and pair-budget failures;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- transaction aggregation;
-- mining, baselines, or temporal evaluation;
+- candidate metric derivation, grid filtering, and ranking;
+- baselines or temporal evaluation;
 - profile evaluation;
 - report schema or rendering;
 - proposal, ratification, manifests, or checking.
@@ -110,7 +113,7 @@ Build Milestone 2 as two dependency-safe pull requests with one motivation
 each. Both operate on synthetic transaction sequences and neither reads the
 development or holdout corpus:
 
-1. add the pure `internal/mining` accumulation fold: intern component
+1. completed: add the pure `internal/mining` accumulation fold: intern component
    identities, maintain component-keyed opportunity and weighted occurrence
    sums, maintain pair-keyed raw and weighted support, compute all three frozen
    size weights and their run-wide eligible-transaction totals side by side,

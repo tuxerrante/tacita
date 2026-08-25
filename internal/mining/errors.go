@@ -12,9 +12,6 @@ var (
 	// ErrDuplicateComponent identifies a transaction whose component set was not
 	// deduplicated by the ingestion boundary.
 	ErrDuplicateComponent = errors.New("duplicate component in transaction")
-	// ErrTransactionComponentLimit identifies a transaction larger than the
-	// frozen per-event component budget.
-	ErrTransactionComponentLimit = errors.New("transaction component limit exceeded")
 	// ErrComponentIdentityLimit identifies too many distinct components in the
 	// accumulated state.
 	ErrComponentIdentityLimit = errors.New("distinct component identity limit exceeded")
@@ -42,25 +39,6 @@ func (e *DuplicateComponentError) Error() string {
 
 func (e *DuplicateComponentError) Is(target error) bool {
 	return target == ErrDuplicateComponent
-}
-
-// TransactionComponentLimitError reports a transaction larger than the frozen
-// per-event component budget.
-type TransactionComponentLimitError struct {
-	Observed int
-	Limit    int
-}
-
-func (e *TransactionComponentLimitError) Error() string {
-	return fmt.Sprintf(
-		"transaction components reached %d, limit %d",
-		e.Observed,
-		e.Limit,
-	)
-}
-
-func (e *TransactionComponentLimitError) Is(target error) bool {
-	return target == ErrTransactionComponentLimit
 }
 
 // ComponentIdentityLimitError reports accumulated state that would exceed the

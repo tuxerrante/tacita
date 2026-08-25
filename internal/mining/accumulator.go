@@ -6,10 +6,9 @@ import (
 )
 
 const (
-	maxTransactionComponents = 100
-	maxComponentIdentities   = 50_000
-	maxPairObservations      = 20_000_000
-	maxPairIdentities        = 2_000_000
+	maxComponentIdentities = 50_000
+	maxPairObservations    = 20_000_000
+	maxPairIdentities      = 2_000_000
 )
 
 // ComponentID is the run-local integer identity of one canonical component.
@@ -50,8 +49,8 @@ type Aggregate struct {
 // Accumulator folds canonical component sets into bounded descriptive state.
 //
 // The zero value is ready to use with the frozen production limits. Observe
-// expects the distinct components of one eligible transaction in canonical
-// input order.
+// expects the distinct components of one eligible transaction after ingestion
+// exclusions, in canonical input order.
 type Accumulator struct {
 	initialized            bool
 	componentIdentityLimit int
@@ -86,11 +85,7 @@ type pairState struct {
 // NewAccumulator returns an empty accumulator using the frozen production
 // limits.
 func NewAccumulator() *Accumulator {
-	return newAccumulator(limits{
-		components:       maxComponentIdentities,
-		pairObservations: maxPairObservations,
-		pairs:            maxPairIdentities,
-	})
+	return &Accumulator{}
 }
 
 type limits struct {
@@ -121,6 +116,8 @@ func (a *Accumulator) Observe(components []string) error {
 	}
 
 	componentIdentities := len(a.components) + len(pending)
+	// Git ingestion enforces this first; repeating it here keeps the allocation
+	// boundary bounded for synthetic and replayed transaction sequences.
 	if componentIdentities > a.componentIdentityLimit {
 		return &ComponentIdentityLimitError{
 			Observed: a.componentIdentityLimit + 1,
@@ -234,12 +231,6 @@ func (a *Accumulator) planComponents(
 ) ([]ComponentID, []string, error) {
 	if len(components) == 0 {
 		return nil, nil, ErrEmptyTransaction
-	}
-	if len(components) > maxTransactionComponents {
-		return nil, nil, &TransactionComponentLimitError{
-			Observed: maxTransactionComponents + 1,
-			Limit:    maxTransactionComponents,
-		}
 	}
 
 	ids := make([]ComponentID, len(components))

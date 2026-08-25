@@ -117,8 +117,8 @@ development or holdout corpus:
    identities, maintain component-keyed opportunity and weighted occurrence
    sums, maintain pair-keyed raw and weighted support, compute all three frozen
    size weights and their run-wide eligible-transaction totals side by side,
-   and enforce the directional-observation and distinct-pair budgets with typed
-   errors;
+   and enforce the component-state, directional-observation, and distinct-pair
+   budgets with typed errors;
 2. derive finite descriptive metrics from one completed aggregate, abstain
    below 100 eligible transactions, apply the fixed raw-support floor and all
    81 post-aggregation configurations, and rank eligible candidates with the

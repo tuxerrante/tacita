@@ -3,6 +3,7 @@ package gitlog
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"runtime"
 )
@@ -99,6 +100,23 @@ func (r *Repository) runScalar(
 		return nil, err
 	}
 	return runGit(ctx, operation, limit, bound...)
+}
+
+// runScalarInput runs a fixed, bounded grammar with finite caller-provided
+// stdin. It exists for machine-readable Git batch queries that remain too small
+// to require the streamed command path.
+func (r *Repository) runScalarInput(
+	ctx context.Context,
+	operation string,
+	stdin io.Reader,
+	limit int,
+	args ...string,
+) ([]byte, error) {
+	bound, err := r.bind(args...)
+	if err != nil {
+		return nil, err
+	}
+	return runGitInput(ctx, operation, stdin, limit, bound...)
 }
 
 // runTargeted runs a bounded Git command against an already classified target.

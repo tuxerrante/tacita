@@ -2,6 +2,7 @@ package gitlog
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -146,35 +147,100 @@ func (r *Repository) classifyFirstParentFailure(
 		return traversalErr
 	}
 
-	missing, err := reportsMissingObjects(output)
-	if err != nil || !missing {
+	missing, err := parseMissingObjectReport(output)
+	if err != nil || len(missing) == 0 {
+		return traversalErr
+	}
+
+	confirmed, err := r.confirmMissingObjects(ctx, missing)
+	if err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return traversalErr
+	}
+	if !confirmed {
 		return traversalErr
 	}
 
 	return fmt.Errorf("%w: first-parent history references an unavailable object", ErrIncompleteRepository)
 }
 
-func reportsMissingObjects(output []byte) (bool, error) {
+func parseMissingObjectReport(output []byte) ([]ObjectID, error) {
 	if len(output) == 0 {
-		return false, nil
+		return nil, nil
 	}
 
-	records := 0
+	var missing []ObjectID
 	for len(output) > 0 {
 		if len(output) < 1+sha1HexLength+1 {
-			return false, errors.New("missing-object report ended mid-record")
+			return nil, errors.New("missing-object report ended mid-record")
 		}
 		if output[0] != missingObjectPrefix ||
 			!isObjectID(output[1:1+sha1HexLength]) ||
 			output[1+sha1HexLength] != recordSeparator {
-			return false, errors.New("missing-object report has invalid framing")
+			return nil, errors.New("missing-object report has invalid framing")
 		}
 
-		records++
+		var id ObjectID
+		copy(id[:], output[1:1+sha1HexLength])
+		missing = append(missing, id)
 		output = output[1+sha1HexLength+1:]
 	}
 
-	return records > 0, nil
+	return missing, nil
+}
+
+func (r *Repository) confirmMissingObjects(ctx context.Context, candidates []ObjectID) (bool, error) {
+	stdin := make([]byte, 0, len(candidates)*(sha1HexLength+1))
+	for _, id := range candidates {
+		stdin = append(stdin, id[:]...)
+		stdin = append(stdin, recordSeparator)
+	}
+
+	output, err := r.runScalarInput(
+		ctx,
+		"checking reported missing objects",
+		bytes.NewReader(stdin),
+		maxScalarOutput,
+		"cat-file",
+		"--batch-check=%(objectname) %(objecttype)",
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return allReportedObjectsMissing(candidates, output)
+}
+
+func allReportedObjectsMissing(candidates []ObjectID, output []byte) (bool, error) {
+	for _, want := range candidates {
+		lineEnd := bytes.IndexByte(output, recordSeparator)
+		if lineEnd < 0 {
+			return false, errors.New("object check ended mid-record")
+		}
+
+		line := output[:lineEnd]
+		if len(line) < sha1HexLength+1 ||
+			!bytes.Equal(line[:sha1HexLength], want[:]) ||
+			line[sha1HexLength] != fieldSeparator {
+			return false, errors.New("object check has invalid framing")
+		}
+
+		switch string(line[sha1HexLength+1:]) {
+		case "missing":
+		case "blob", "commit", "tag", "tree":
+			return false, nil
+		default:
+			return false, errors.New("object check has an unknown status")
+		}
+		output = output[lineEnd+1:]
+	}
+
+	if len(output) != 0 {
+		return false, errors.New("object check has trailing records")
+	}
+	return true, nil
 }
 
 // parseFirstParentEvents decodes `rev-list --parents` output field by field.

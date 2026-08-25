@@ -316,10 +316,12 @@ so match `extensions.partialclone`, `remote.<name>.promisor`, and
 `remote.<name>.partialclonefilter` case-insensitively. After a failed
 first-parent commit traversal, Tacita runs the same walk with bounded,
 machine-readable `--missing=print` diagnostics. A successful diagnostic
-containing only `?<full-object-id>` records proves an unavailable object and
-is `incomplete_repository`. Diagnostic failure, overflow, or malformed output
-preserves the original Git failure; stderr text is never a branching input.
-The bounded run does not perform a full `git fsck`.
+containing only `?<full-object-id>` records identifies candidates. A bounded
+`cat-file --batch-check` query must then report every candidate as `missing`
+before the failure becomes `incomplete_repository`; any existing object,
+diagnostic failure, overflow, or malformed output preserves the original Git
+failure. Stderr text is never a branching input. The bounded run does not
+perform a full `git fsck`.
 
 The effective configuration is obtained with one bounded `config --list -z`
 rather than a scope-restricted listing. `--local` does not expand a conditional
@@ -426,11 +428,15 @@ git <repository-target> diff-tree \
 ```
 
 If the first command exits unsuccessfully, Tacita may run one bounded
-diagnostic over the same first-parent walk:
+diagnostic over the same first-parent walk and one bounded batch check for the
+reported candidates:
 
 ```text
 git <repository-target> rev-list \
   --quiet --first-parent --missing=print <resolved-object-id>
+
+git <repository-target> cat-file \
+  --batch-check='%(objectname) %(objecttype)'
 ```
 
 This failure-only command does not contribute events or paths. Its output is

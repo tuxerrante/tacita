@@ -182,8 +182,10 @@ performs the frozen resolution. Together they:
   queries, and the frozen resolution command with a fixed environment
   allowlist;
 - apply the required repository-local configuration overrides;
-- capture at most 4 KiB from each fixed-grammar stdout, 1 MiB from the
-  effective configuration listing, and 1 MiB from Git stderr;
+- capture at most 4 KiB from each fixed-grammar stdout except the failure-only
+  object confirmation, whose cap is exactly 49 bytes per reported candidate
+  and at most 4,753 bytes; capture 1 MiB from the effective configuration
+  listing and 1 MiB from Git stderr;
 - stop the child at a stream limit instead of paying for the whole overflow;
 - return a complete lowercase 40-byte commit ID or a classifiable error;
 - kill and wait for Git when the caller's context is cancelled.
@@ -320,8 +322,10 @@ containing only `?<full-object-id>` records identifies candidates. A bounded
 `cat-file --batch-check` query must then report every candidate as `missing`
 before the failure becomes `incomplete_repository`; any existing object,
 diagnostic failure, overflow, or malformed output preserves the original Git
-failure. Stderr text is never a branching input. The bounded run does not
-perform a full `git fsck`.
+failure. Its output cap is 49 bytes per candidate, the longest valid response,
+so every candidate admitted by the 4 KiB missing-object report can be checked
+without weakening the bound. Stderr text is never a branching input. The
+bounded run does not perform a full `git fsck`.
 
 The effective configuration is obtained with one bounded `config --list -z`
 rather than a scope-restricted listing. `--local` does not expand a conditional

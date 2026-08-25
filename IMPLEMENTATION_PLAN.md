@@ -197,8 +197,7 @@ first-parent commit traversal are classified from machine-readable Git output;
 unclassifiable traversal failures remain conservative Git failures. Component
 projection from normalized event paths into bounded, deduplicated component
 transactions is also implemented, and that stream owns the frozen global path
-and component identity budgets. Milestone 1 implementation is complete; its
-stacked pull requests still require green CI, completed review, and human merge.
+and component identity budgets. Milestone 1 implementation is complete.
 
 ### 2. Descriptive miner
 

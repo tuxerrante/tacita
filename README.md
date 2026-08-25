@@ -47,6 +47,7 @@ Requirements:
 
 ```bash
 make help
+make markdown-gate
 make check
 make quality-gate
 ```
@@ -55,7 +56,9 @@ make quality-gate
 runs the full lint, race, coverage, build, vulnerability/secret scanning,
 Go/Markdown formatting, and Markdown lint checks. Pinned external development
 tools are installed under `.go/bin`; they do not become runtime module
-dependencies.
+dependencies. A pull request whose changed files are all Markdown uses
+`make markdown-gate` instead, which runs only the pinned Markdown formatter
+check and linter.
 
 Run the current shell:
 

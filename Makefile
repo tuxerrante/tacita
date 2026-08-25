@@ -24,8 +24,8 @@ include .bingo/Variables.mk
 
 LINT_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD 2>/dev/null)
 
-.PHONY: all help tools fmt fmt-check markdown-check vet lint lint-new test test-race fuzz coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run clean
-.NOTPARALLEL: check quality-gate pre-commit-run
+.PHONY: all help tools fmt fmt-check markdown-fmt-check markdown-check markdown-gate vet lint lint-new test test-race fuzz coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run clean
+.NOTPARALLEL: check markdown-gate quality-gate pre-commit-run
 
 all: check ## Run the incremental local validation gate
 
@@ -82,8 +82,13 @@ fmt-check: $(GOFUMPT) $(RUMDL) ## Fail when Go source or Markdown is not formatt
 	fi
 	"$(RUMDL)" fmt --check .
 
+markdown-fmt-check: $(RUMDL) ## Fail when Markdown is not formatted
+	"$(RUMDL)" fmt --check .
+
 markdown-check: $(RUMDL) ## Lint Markdown
 	"$(RUMDL)" check .
+
+markdown-gate: markdown-fmt-check markdown-check ## Validate a Markdown-only change
 
 vet: ## Run the standard Go analyzer
 	go vet ./...

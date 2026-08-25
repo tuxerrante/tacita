@@ -39,11 +39,12 @@ const (
 type ExclusionReason string
 
 const (
-	RootEventReason       ExclusionReason = "root_event"
-	NoEligiblePathsReason ExclusionReason = "no_eligible_paths"
-	EventPathLimitReason  ExclusionReason = "event_path_limit"
-	VendorPathReason      ExclusionReason = "vendor_path"
-	GitlinkPathReason     ExclusionReason = "gitlink_path"
+	RootEventReason           ExclusionReason = "root_event"
+	NoEligiblePathsReason     ExclusionReason = "no_eligible_paths"
+	EventPathLimitReason      ExclusionReason = "event_path_limit"
+	EventComponentLimitReason ExclusionReason = "event_component_limit"
+	VendorPathReason          ExclusionReason = "vendor_path"
+	GitlinkPathReason         ExclusionReason = "gitlink_path"
 )
 
 // Exclusion identifies one counted exclusion.

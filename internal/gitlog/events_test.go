@@ -85,17 +85,72 @@ func TestFirstParentEventsEnforcesTheOutputLimit(t *testing.T) {
 	}
 }
 
-// TestFirstParentEventsReportsGitFailure keeps a repository whose objects went
-// missing after Open from being reported as a grammar violation.
-func TestFirstParentEventsReportsGitFailure(t *testing.T) {
+// TestFirstParentEventsReportsIncompleteRepository proves a missing commit
+// discovered after Open is classified from machine-readable Git output rather
+// than stderr text.
+func TestFirstParentEventsReportsIncompleteRepository(t *testing.T) {
 	repository, ids := newBranchedTestRepository(t)
 	opened := openTestRepository(t, repository)
 	removeObject(t, repository, ids["main"])
 
 	_, err := opened.FirstParentEvents(t.Context(), ids["merge"])
 
+	if !errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("FirstParentEvents() error = %v, want ErrIncompleteRepository", err)
+	}
+	if errors.Is(err, ErrGitFailure) {
+		t.Fatalf("FirstParentEvents() error = %v, also matches ErrGitFailure", err)
+	}
+}
+
+func TestFirstParentEventsPreservesUnclassifiableGitFailure(t *testing.T) {
+	repository, ids := newBranchedTestRepository(t)
+	opened := openTestRepository(t, repository)
+
+	objects := filepath.Join(repository, gitDirEntry, "objects")
+	if err := os.Rename(objects, objects+".unavailable"); err != nil {
+		t.Fatalf("making object store unavailable: %v", err)
+	}
+
+	_, err := opened.FirstParentEvents(t.Context(), ids["merge"])
+
 	if !errors.Is(err, ErrGitFailure) {
 		t.Fatalf("FirstParentEvents() error = %v, want ErrGitFailure", err)
+	}
+	if errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("FirstParentEvents() error = %v, unexpectedly matches ErrIncompleteRepository", err)
+	}
+}
+
+func TestReportsMissingObjects(t *testing.T) {
+	id := strings.Repeat("a", sha1HexLength)
+	other := strings.Repeat("b", sha1HexLength)
+
+	tests := []struct {
+		name    string
+		output  string
+		missing bool
+		wantErr bool
+	}{
+		{name: "empty"},
+		{name: "one", output: "?" + id + "\n", missing: true},
+		{name: "multiple", output: "?" + id + "\n?" + other + "\n", missing: true},
+		{name: "plain object ID", output: id + "\n", wantErr: true},
+		{name: "invalid object ID", output: "?" + strings.Repeat("g", sha1HexLength) + "\n", wantErr: true},
+		{name: "missing newline", output: "?" + id, wantErr: true},
+		{name: "trailing data", output: "?" + id + "\nextra", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			missing, err := reportsMissingObjects([]byte(tt.output))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("reportsMissingObjects() error = %v, wantErr %t", err, tt.wantErr)
+			}
+			if missing != tt.missing {
+				t.Errorf("reportsMissingObjects() = %t, want %t", missing, tt.missing)
+			}
+		})
 	}
 }
 

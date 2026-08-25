@@ -312,9 +312,13 @@ only to reject the repository, from the effective local and worktree scopes
 rather than the local scope alone, because `includeIf` and worktree-scoped
 configuration otherwise hide it. Git normalizes configuration keys to lowercase,
 so match `extensions.partialclone`, `remote.<name>.promisor`, and
-`remote.<name>.partialclonefilter` case-insensitively. Any missing-object
-failure during traversal is `incomplete_repository`; the bounded
-run does not perform a full `git fsck`.
+`remote.<name>.partialclonefilter` case-insensitively. After a failed
+first-parent commit traversal, Tacita runs the same walk with bounded,
+machine-readable `--missing=print` diagnostics. A successful diagnostic
+containing only `?<full-object-id>` records proves an unavailable object and
+is `incomplete_repository`. Diagnostic failure, overflow, or malformed output
+preserves the original Git failure; stderr text is never a branching input.
+The bounded run does not perform a full `git fsck`.
 
 The effective configuration is obtained with one bounded `config --list -z`
 rather than a scope-restricted listing. `--local` does not expand a conditional
@@ -333,9 +337,12 @@ commit's tree is never read, and objects reachable only through secondary
 parents are never traversed. Complete local objects therefore remain a support
 precondition, and missing objects discovered during traversal are classified,
 not prevented. Because Git offers no stable machine-readable distinction
-between a missing object and other traversal failures, and stderr text is not a
-branching input, any unclassifiable traversal failure is reported
-conservatively rather than guessed.
+between a missing object and other failures for every history command, and
+stderr text is not a branching input, any unclassifiable traversal failure is
+reported conservatively rather than guessed. In particular, `diff-tree` does
+not expose a causal machine-readable missing-tree diagnostic. A broad object
+walk would inspect objects the frozen diff never needs and could misclassify an
+unrelated failure, so it is not used.
 
 Rejecting promisor and partial-clone repositories is a correctness *and*
 isolation requirement. `diff-tree` over a partial clone lazily fetches the

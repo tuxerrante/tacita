@@ -13,8 +13,9 @@ const (
 	// scanned in one run.
 	maxIntegrationEvents = 200_000
 
-	fieldSeparator  = ' '
-	recordSeparator = '\n'
+	missingObjectPrefix = '?'
+	fieldSeparator      = ' '
+	recordSeparator     = '\n'
 )
 
 // ObjectID is a complete lowercase hexadecimal SHA-1 object ID.
@@ -108,10 +109,72 @@ func (r *Repository) firstParentEvents(
 		return parseErr
 	}
 	if err := runStreaming(ctx, "listing integration events", nil, outputLimit, parse, bound...); err != nil {
-		return nil, err
+		return nil, r.classifyFirstParentFailure(ctx, id, err)
 	}
 
 	return events, nil
+}
+
+// classifyFirstParentFailure checks only a failed first-parent traversal. Git's
+// --missing=print output is machine-readable for this exact walk; any failed,
+// bounded, or malformed diagnostic preserves the original Git failure instead
+// of guessing from stderr.
+func (r *Repository) classifyFirstParentFailure(
+	ctx context.Context,
+	commit ObjectID,
+	traversalErr error,
+) error {
+	var gitErr *GitError
+	if !errors.As(traversalErr, &gitErr) {
+		return traversalErr
+	}
+
+	output, err := r.runScalar(
+		ctx,
+		"checking first-parent completeness",
+		maxScalarOutput,
+		"rev-list",
+		"--quiet",
+		"--first-parent",
+		"--missing=print",
+		commit.String(),
+	)
+	if err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return traversalErr
+	}
+
+	missing, err := reportsMissingObjects(output)
+	if err != nil || !missing {
+		return traversalErr
+	}
+
+	return fmt.Errorf("%w: first-parent history references an unavailable object", ErrIncompleteRepository)
+}
+
+func reportsMissingObjects(output []byte) (bool, error) {
+	if len(output) == 0 {
+		return false, nil
+	}
+
+	records := 0
+	for len(output) > 0 {
+		if len(output) < 1+sha1HexLength+1 {
+			return false, errors.New("missing-object report ended mid-record")
+		}
+		if output[0] != missingObjectPrefix ||
+			!isObjectID(output[1:1+sha1HexLength]) ||
+			output[1+sha1HexLength] != recordSeparator {
+			return false, errors.New("missing-object report has invalid framing")
+		}
+
+		records++
+		output = output[1+sha1HexLength+1:]
+	}
+
+	return records > 0, nil
 }
 
 // parseFirstParentEvents decodes `rev-list --parents` output field by field.

@@ -52,6 +52,8 @@ Implemented:
   before any history command can run;
 - bounded Git output that stops the child at its limit;
 - streamed first-parent event metadata, validated as a chain while it is read;
+- deterministic classification of unavailable objects found by first-parent
+  commit traversal, with conservative fallback for unclassifiable Git failures;
 - streamed `diff-tree` records normalized into per-event changed paths, with
   disjoint exclusion counts and no cross-event accumulation;
 - real-repository coverage for bare repositories, hostile revisions, unusual
@@ -60,7 +62,6 @@ Implemented:
 
 Not implemented:
 
-- missing-object classification during history traversal;
 - component projection or transaction aggregation;
 - mining, baselines, or temporal evaluation;
 - profile evaluation;
@@ -123,8 +124,9 @@ one is stacked on the previous:
 6. completed: stream and validate `rev-list` first-parent event metadata;
 7. completed: stream `diff-tree` records into normalized events and exclusion
    diagnostics.
-8. classify traversal failures caused by missing objects as an incomplete
-   repository;
+8. completed: classify machine-readable missing objects from first-parent
+   commit traversal as an incomplete repository and preserve unclassifiable Git
+   failures conservatively;
 9. project normalized event paths into deduplicated component transactions
    under the frozen component-projection, exclusion, and resource contracts.
 
@@ -183,11 +185,12 @@ Deliver:
 Exit: deterministic bounded output, complete child-process cleanup, and explicit
 incomplete-history behavior.
 
-Revision resolution and preflight against known incompleteness mechanisms are
-complete. Streamed history traversal is implemented, but classifying traversal
-failures caused by missing objects remains outstanding. That classification is
-the next learning exercise; component projection from normalized event paths
-into bounded, deduplicated component transactions follows it.
+Revision resolution, preflight against known incompleteness mechanisms, and
+streamed history traversal are complete. Missing objects exposed by
+first-parent commit traversal are classified from machine-readable Git output;
+unclassifiable traversal failures remain conservative Git failures. Component
+projection from normalized event paths into bounded, deduplicated component
+transactions is the next learning exercise.
 
 ### 2. Descriptive miner
 

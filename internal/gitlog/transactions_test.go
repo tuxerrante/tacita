@@ -207,6 +207,13 @@ func TestEachTransactionEnforcesGlobalIdentityLimitsBeforeVisiting(t *testing.T)
 			componentLimit: 2,
 			wantErr:        ErrComponentIdentityLimit,
 		},
+		{
+			name:           "path precedence when both exceed",
+			pathLimit:      2,
+			componentLimit: 2,
+			wantErr:        ErrPathIdentityLimit,
+			pathBudget:     true,
+		},
 	}
 
 	for _, tt := range tests {

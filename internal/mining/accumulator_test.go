@@ -232,7 +232,7 @@ func TestAccumulatorAcceptsExactPairLimits(t *testing.T) {
 }
 
 func TestAccumulatorRejectsInvalidTransactionsAtomically(t *testing.T) {
-	tooMany := make([]string, maxTransactionComponents+1)
+	tooMany := make([]string, maxTransactionComponents*10)
 	for index := range tooMany {
 		tooMany[index] = fmt.Sprintf("%03d", index)
 	}
@@ -266,6 +266,24 @@ func TestAccumulatorRejectsInvalidTransactionsAtomically(t *testing.T) {
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Observe() error = %v, want %v", err, tt.wantErr)
+			}
+			if errors.Is(tt.wantErr, ErrTransactionComponentLimit) {
+				var limitErr *TransactionComponentLimitError
+				if !errors.As(err, &limitErr) {
+					t.Fatalf(
+						"Observe() error type = %T, want *TransactionComponentLimitError",
+						err,
+					)
+				}
+				if limitErr.Observed != maxTransactionComponents+1 ||
+					limitErr.Limit != maxTransactionComponents {
+					t.Errorf(
+						"TransactionComponentLimitError = %+v, want observed %d limit %d",
+						limitErr,
+						maxTransactionComponents+1,
+						maxTransactionComponents,
+					)
+				}
 			}
 			assertAggregate(t, accumulator.Snapshot(), Aggregate{})
 		})

@@ -237,7 +237,7 @@ func (a *Accumulator) planComponents(
 	}
 	if len(components) > maxTransactionComponents {
 		return nil, nil, &TransactionComponentLimitError{
-			Observed: len(components),
+			Observed: maxTransactionComponents + 1,
 			Limit:    maxTransactionComponents,
 		}
 	}

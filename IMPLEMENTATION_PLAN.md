@@ -15,7 +15,7 @@ definition, experimental protocol, or architecture:
 - [`docs/architecture.md`](docs/architecture.md) defines implementation,
   security, and testing contracts.
 
-## 🎯 Goal
+## Goal
 
 Build the smallest evidence-first vertical slice that can answer:
 
@@ -36,7 +36,7 @@ Product ratification, product manifests, and enforcement begin only after the
 experiment passes its frozen gates. Experiment review manifests are evidence
 artifacts, not product policy.
 
-## 🚦 Current implementation
+## Current implementation
 
 Implemented:
 
@@ -79,7 +79,7 @@ contract is frozen. The implemented Git boundary is likewise provisional and
 still under review; each review pass so far has found and fixed a defect,
 recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
-## 📊 Frozen Milestone 0 decisions
+## Frozen Milestone 0 decisions
 
 Milestone 1 must implement these contracts without changing them from
 development or holdout results:
@@ -107,7 +107,7 @@ made after human review of public history but before Tacita produced Kapparmor
 candidate or metric output. The experiment is re-frozen; later changes require
 a newly preregistered run. Kapparmor results cannot modify this table.
 
-## 🧭 Next implementation steps
+## Next implementation steps
 
 Build Milestone 2 as two dependency-safe pull requests with one motivation
 each. Both operate on synthetic transaction sequences and neither reads the
@@ -119,9 +119,10 @@ development or holdout corpus:
    size weights and their run-wide eligible-transaction totals side by side,
    and enforce the directional-observation and distinct-pair budgets with typed
    errors;
-2. derive finite descriptive metrics from one completed aggregate, apply the
-   fixed raw-support floor and all 81 post-aggregation configurations, and rank
-   eligible candidates with the frozen byte-level tie-breakers.
+2. derive finite descriptive metrics from one completed aggregate, abstain
+   below 100 eligible transactions, apply the fixed raw-support floor and all
+   81 post-aggregation configurations, and rank eligible candidates with the
+   frozen byte-level tie-breakers.
 
 The first pull request owns accumulation and resource exhaustion. The second
 owns candidate eligibility and ordering. Neither introduces temporal cutoffs,
@@ -135,7 +136,7 @@ any holdout report. Moving that work changes only the operational milestone
 boundary; the frozen grid, selector, corpus, report, and holdout rules remain
 unchanged.
 
-## 🔍 Design review records
+## Design review records
 
 ### Milestone 1 design review record
 
@@ -173,9 +174,9 @@ work. They recorded these outcomes:
 
 These findings split independently testable responsibilities and correct the
 milestone boundary. They change no frozen metric, threshold, configuration,
-corpus ID, report field, resource budget, or Git or component semantic.
+corpus ID, report field, resource budget, or Git or component semantics.
 
-## 🚦 Milestones
+## Milestones
 
 ### 0. Freeze the experiment — complete 2026-08-16
 
@@ -257,7 +258,7 @@ Choose one:
 
 Enforcement never starts automatically.
 
-## 🧭 Deferred roadmap
+## Deferred roadmap
 
 After a positive Milestone 5 decision, consider in order:
 
@@ -274,7 +275,7 @@ After a positive Milestone 5 decision, consider in order:
 Kubernetes policy, opaque model scoring, network/LLM dependencies in analysis,
 and authorship detection are outside the product boundary.
 
-## 🔀 Change discipline
+## Change discipline
 
 - Update this file when milestone status, blockers, or implementation order
   changes.

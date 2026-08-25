@@ -3,6 +3,7 @@ package gitlog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,17 +86,184 @@ func TestFirstParentEventsEnforcesTheOutputLimit(t *testing.T) {
 	}
 }
 
-// TestFirstParentEventsReportsGitFailure keeps a repository whose objects went
-// missing after Open from being reported as a grammar violation.
-func TestFirstParentEventsReportsGitFailure(t *testing.T) {
+// TestFirstParentEventsReportsIncompleteRepository proves a missing commit
+// discovered after Open is classified from machine-readable Git output rather
+// than stderr text.
+func TestFirstParentEventsReportsIncompleteRepository(t *testing.T) {
 	repository, ids := newBranchedTestRepository(t)
 	opened := openTestRepository(t, repository)
 	removeObject(t, repository, ids["main"])
 
 	_, err := opened.FirstParentEvents(t.Context(), ids["merge"])
 
+	if !errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("FirstParentEvents() error = %v, want ErrIncompleteRepository", err)
+	}
+	if errors.Is(err, ErrGitFailure) {
+		t.Fatalf("FirstParentEvents() error = %v, also matches ErrGitFailure", err)
+	}
+}
+
+func TestFirstParentEventsPreservesUnclassifiableGitFailure(t *testing.T) {
+	repository, ids := newBranchedTestRepository(t)
+	opened := openTestRepository(t, repository)
+
+	objects := filepath.Join(repository, gitDirEntry, "objects")
+	if err := os.Rename(objects, objects+".unavailable"); err != nil {
+		t.Fatalf("making object store unavailable: %v", err)
+	}
+
+	_, err := opened.FirstParentEvents(t.Context(), ids["merge"])
+
 	if !errors.Is(err, ErrGitFailure) {
 		t.Fatalf("FirstParentEvents() error = %v, want ErrGitFailure", err)
+	}
+	if errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("FirstParentEvents() error = %v, unexpectedly matches ErrIncompleteRepository", err)
+	}
+}
+
+func TestFirstParentEventsPreservesWrongTypeParentFailure(t *testing.T) {
+	repository, _ := newTestRepository(t)
+	tree := runTestGit(t, "-C", repository, "rev-parse", "HEAD^{tree}")
+	blob := hashObject(t, repository, "not a commit")
+	content := fmt.Sprintf(
+		"tree %s\nparent %s\nauthor Tacita Test <tacita@example.invalid> 0 +0000\n"+
+			"committer Tacita Test <tacita@example.invalid> 0 +0000\n\nbad parent\n",
+		tree,
+		blob,
+	)
+	path := filepath.Join(t.TempDir(), "malformed-commit")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing malformed commit: %v", err)
+	}
+	commit := runTestGit(
+		t,
+		"-C", repository,
+		"hash-object", "-t", "commit", "--literally", "-w", "--", path,
+	)
+	opened := openTestRepository(t, repository)
+	confirmed, err := opened.confirmMissingObjects(
+		t.Context(),
+		[]ObjectID{mustObjectID(t, blob)},
+	)
+	if err != nil {
+		t.Fatalf("confirmMissingObjects() error = %v", err)
+	}
+	if confirmed {
+		t.Fatal("confirmMissingObjects() reported an existing blob as missing")
+	}
+
+	_, err = opened.FirstParentEvents(t.Context(), commit)
+
+	if !errors.Is(err, ErrGitFailure) {
+		t.Fatalf("FirstParentEvents() error = %v, want ErrGitFailure", err)
+	}
+	if errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("FirstParentEvents() error = %v, unexpectedly matches ErrIncompleteRepository", err)
+	}
+}
+
+func TestConfirmMissingObjectsAcceptsFullDiagnosticBatch(t *testing.T) {
+	repository, _ := newTestRepository(t)
+	opened := openTestRepository(t, repository)
+	candidates := make([]ObjectID, maxMissingObjectCandidates)
+	for i := range candidates {
+		candidates[i] = mustObjectID(t, fmt.Sprintf("%040x", i+1))
+	}
+	if len(candidates)*missingObjectCheckRecordLength <= maxScalarOutput {
+		t.Fatal("test batch does not exceed the general scalar output limit")
+	}
+
+	confirmed, err := opened.confirmMissingObjects(t.Context(), candidates)
+	if err != nil {
+		t.Fatalf("confirmMissingObjects() error = %v", err)
+	}
+	if !confirmed {
+		t.Fatal("confirmMissingObjects() did not confirm the full diagnostic batch")
+	}
+
+	_, err = opened.confirmMissingObjects(
+		t.Context(),
+		append(candidates, mustObjectID(t, strings.Repeat("f", sha1HexLength))),
+	)
+	if err == nil {
+		t.Fatal("confirmMissingObjects() accepted more candidates than the diagnostic can report")
+	}
+}
+
+func TestParseMissingObjectReport(t *testing.T) {
+	id := strings.Repeat("a", sha1HexLength)
+	other := strings.Repeat("b", sha1HexLength)
+
+	tests := []struct {
+		name    string
+		output  string
+		count   int
+		wantErr bool
+	}{
+		{name: "empty"},
+		{name: "one", output: "?" + id + "\n", count: 1},
+		{name: "multiple", output: "?" + id + "\n?" + other + "\n", count: 2},
+		{name: "plain object ID", output: id + "\n", wantErr: true},
+		{name: "invalid object ID", output: "?" + strings.Repeat("g", sha1HexLength) + "\n", wantErr: true},
+		{name: "missing newline", output: "?" + id, wantErr: true},
+		{name: "trailing data", output: "?" + id + "\nextra", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			missing, err := parseMissingObjectReport([]byte(tt.output))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseMissingObjectReport() error = %v, wantErr %t", err, tt.wantErr)
+			}
+			if len(missing) != tt.count {
+				t.Errorf("parseMissingObjectReport() returned %d IDs, want %d", len(missing), tt.count)
+			}
+		})
+	}
+}
+
+func TestAllReportedObjectsMissing(t *testing.T) {
+	id := mustObjectID(t, strings.Repeat("a", sha1HexLength))
+	other := mustObjectID(t, strings.Repeat("b", sha1HexLength))
+
+	tests := []struct {
+		name       string
+		candidates []ObjectID
+		output     string
+		missing    bool
+		wantErr    bool
+	}{
+		{name: "one missing", candidates: []ObjectID{id}, output: id.String() + " missing\n", missing: true},
+		{
+			name:       "multiple missing",
+			candidates: []ObjectID{id, other},
+			output:     id.String() + " missing\n" + other.String() + " missing\n",
+			missing:    true,
+		},
+		{name: "existing blob", candidates: []ObjectID{id}, output: id.String() + " blob\n"},
+		{name: "wrong ID", candidates: []ObjectID{id}, output: other.String() + " missing\n", wantErr: true},
+		{name: "unknown status", candidates: []ObjectID{id}, output: id.String() + " unknown\n", wantErr: true},
+		{name: "missing newline", candidates: []ObjectID{id}, output: id.String() + " missing", wantErr: true},
+		{
+			name:       "trailing record",
+			candidates: []ObjectID{id},
+			output:     id.String() + " missing\n" + other.String() + " missing\n",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			missing, err := allReportedObjectsMissing(tt.candidates, []byte(tt.output))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("allReportedObjectsMissing() error = %v, wantErr %t", err, tt.wantErr)
+			}
+			if missing != tt.missing {
+				t.Errorf("allReportedObjectsMissing() = %t, want %t", missing, tt.missing)
+			}
+		})
 	}
 }
 

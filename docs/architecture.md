@@ -182,16 +182,19 @@ performs the frozen resolution. Together they:
   queries, and the frozen resolution command with a fixed environment
   allowlist;
 - apply the required repository-local configuration overrides;
-- capture at most 4 KiB from each fixed-grammar stdout, 1 MiB from the
-  effective configuration listing, and 1 MiB from Git stderr;
+- capture at most 4 KiB from each fixed-grammar stdout except the failure-only
+  object confirmation, whose cap is exactly 49 bytes per reported candidate
+  and at most 4,753 bytes; capture 1 MiB from the effective configuration
+  listing and 1 MiB from Git stderr;
 - stop the child at a stream limit instead of paying for the whole overflow;
 - return a complete lowercase 40-byte commit ID or a classifiable error;
 - kill and wait for Git when the caller's context is cancelled.
 
 The caller owns the elapsed-time deadline. Successful resolution establishes an
 immutable commit identity but does not establish complete history. Preflight
-removes the known incompleteness mechanisms; missing-object classification
-during traversal remains outstanding.
+removes the known incompleteness mechanisms. A failed first-parent traversal
+uses bounded, machine-readable diagnostics to classify proven unavailable
+objects; failures without that evidence remain conservative Git failures.
 
 `FirstParentEvents` implements the first streamed boundary. It runs the frozen
 `rev-list` command and returns one event per first-parent commit, root first,
@@ -312,9 +315,17 @@ only to reject the repository, from the effective local and worktree scopes
 rather than the local scope alone, because `includeIf` and worktree-scoped
 configuration otherwise hide it. Git normalizes configuration keys to lowercase,
 so match `extensions.partialclone`, `remote.<name>.promisor`, and
-`remote.<name>.partialclonefilter` case-insensitively. Any missing-object
-failure during traversal is `incomplete_repository`; the bounded
-run does not perform a full `git fsck`.
+`remote.<name>.partialclonefilter` case-insensitively. After a failed
+first-parent commit traversal, Tacita runs the same walk with bounded,
+machine-readable `--missing=print` diagnostics. A successful diagnostic
+containing only `?<full-object-id>` records identifies candidates. A bounded
+`cat-file --batch-check` query must then report every candidate as `missing`
+before the failure becomes `incomplete_repository`; any existing object,
+diagnostic failure, overflow, or malformed output preserves the original Git
+failure. Its output cap is 49 bytes per candidate, the longest valid response,
+so every candidate admitted by the 4 KiB missing-object report can be checked
+without weakening the bound. Stderr text is never a branching input. The
+bounded run does not perform a full `git fsck`.
 
 The effective configuration is obtained with one bounded `config --list -z`
 rather than a scope-restricted listing. `--local` does not expand a conditional
@@ -333,9 +344,12 @@ commit's tree is never read, and objects reachable only through secondary
 parents are never traversed. Complete local objects therefore remain a support
 precondition, and missing objects discovered during traversal are classified,
 not prevented. Because Git offers no stable machine-readable distinction
-between a missing object and other traversal failures, and stderr text is not a
-branching input, any unclassifiable traversal failure is reported
-conservatively rather than guessed.
+between a missing object and other failures for every history command, and
+stderr text is not a branching input, any unclassifiable traversal failure is
+reported conservatively rather than guessed. In particular, `diff-tree` does
+not expose a causal machine-readable missing-tree diagnostic. A broad object
+walk would inspect objects the frozen diff never needs and could misclassify an
+unrelated failure, so it is not used.
 
 Rejecting promisor and partial-clone repositories is a correctness *and*
 isolation requirement. `diff-tree` over a partial clone lazily fetches the
@@ -404,8 +418,8 @@ Shallow history is rejected in the first experiment.
 
 ### Frozen Git data flow
 
-Use two bounded Git commands with the frozen environment, repository target,
-and `-c` overrides:
+The success path uses two bounded Git commands with the frozen environment,
+repository target, and `-c` overrides:
 
 ```text
 git <repository-target> rev-list \
@@ -416,6 +430,22 @@ git <repository-target> diff-tree \
   --no-renames --no-textconv --no-ext-diff \
   --diff-merges=first-parent
 ```
+
+If the first command exits unsuccessfully, Tacita may run one bounded
+diagnostic over the same first-parent walk and one bounded batch check for the
+reported candidates:
+
+```text
+git <repository-target> rev-list \
+  --quiet --first-parent --missing=print <resolved-object-id>
+
+git <repository-target> cat-file \
+  --batch-check='%(objectname) %(objecttype)'
+```
+
+This failure-only command does not contribute events or paths. Its output is
+used solely for the conservative incomplete-repository classification described
+in [supported experiment environment](#supported-experiment-environment).
 
 The first command is line-oriented only because every field is a validated
 full hexadecimal object ID. It defines event order, first parent, and event

@@ -2,6 +2,7 @@ package gitlog
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +14,14 @@ const (
 	// scanned in one run.
 	maxIntegrationEvents = 200_000
 
-	fieldSeparator  = ' '
-	recordSeparator = '\n'
+	missingObjectPrefix = '?'
+	fieldSeparator      = ' '
+	recordSeparator     = '\n'
+	missingObjectStatus = "missing"
+
+	missingObjectReportRecordLength = 1 + sha1HexLength + 1
+	missingObjectCheckRecordLength  = sha1HexLength + 1 + len(missingObjectStatus) + 1
+	maxMissingObjectCandidates      = maxScalarOutput / missingObjectReportRecordLength
 )
 
 // ObjectID is a complete lowercase hexadecimal SHA-1 object ID.
@@ -108,10 +115,141 @@ func (r *Repository) firstParentEvents(
 		return parseErr
 	}
 	if err := runStreaming(ctx, "listing integration events", nil, outputLimit, parse, bound...); err != nil {
-		return nil, err
+		return nil, r.classifyFirstParentFailure(ctx, id, err)
 	}
 
 	return events, nil
+}
+
+// classifyFirstParentFailure checks only a failed first-parent traversal. Git's
+// --missing=print output is machine-readable for this exact walk; any failed,
+// bounded, or malformed diagnostic preserves the original Git failure instead
+// of guessing from stderr.
+func (r *Repository) classifyFirstParentFailure(
+	ctx context.Context,
+	commit ObjectID,
+	traversalErr error,
+) error {
+	var gitErr *GitError
+	if !errors.As(traversalErr, &gitErr) {
+		return traversalErr
+	}
+
+	output, err := r.runScalar(
+		ctx,
+		"checking first-parent completeness",
+		maxScalarOutput,
+		"rev-list",
+		"--quiet",
+		"--first-parent",
+		"--missing=print",
+		commit.String(),
+	)
+	if err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return traversalErr
+	}
+
+	missing, err := parseMissingObjectReport(output)
+	if err != nil || len(missing) == 0 {
+		return traversalErr
+	}
+
+	confirmed, err := r.confirmMissingObjects(ctx, missing)
+	if err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return traversalErr
+	}
+	if !confirmed {
+		return traversalErr
+	}
+
+	return fmt.Errorf("%w: first-parent history references an unavailable object", ErrIncompleteRepository)
+}
+
+func parseMissingObjectReport(output []byte) ([]ObjectID, error) {
+	if len(output) == 0 {
+		return nil, nil
+	}
+
+	var missing []ObjectID
+	for len(output) > 0 {
+		if len(output) < 1+sha1HexLength+1 {
+			return nil, errors.New("missing-object report ended mid-record")
+		}
+		if output[0] != missingObjectPrefix ||
+			!isObjectID(output[1:1+sha1HexLength]) ||
+			output[1+sha1HexLength] != recordSeparator {
+			return nil, errors.New("missing-object report has invalid framing")
+		}
+
+		var id ObjectID
+		copy(id[:], output[1:1+sha1HexLength])
+		missing = append(missing, id)
+		output = output[1+sha1HexLength+1:]
+	}
+
+	return missing, nil
+}
+
+func (r *Repository) confirmMissingObjects(ctx context.Context, candidates []ObjectID) (bool, error) {
+	if len(candidates) > maxMissingObjectCandidates {
+		return false, errors.New("object check candidate limit exceeded")
+	}
+
+	stdin := make([]byte, 0, len(candidates)*(sha1HexLength+1))
+	for _, id := range candidates {
+		stdin = append(stdin, id[:]...)
+		stdin = append(stdin, recordSeparator)
+	}
+
+	output, err := r.runScalarInput(
+		ctx,
+		"checking reported missing objects",
+		bytes.NewReader(stdin),
+		len(candidates)*missingObjectCheckRecordLength,
+		"cat-file",
+		"--batch-check=%(objectname) %(objecttype)",
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return allReportedObjectsMissing(candidates, output)
+}
+
+func allReportedObjectsMissing(candidates []ObjectID, output []byte) (bool, error) {
+	for _, want := range candidates {
+		lineEnd := bytes.IndexByte(output, recordSeparator)
+		if lineEnd < 0 {
+			return false, errors.New("object check ended mid-record")
+		}
+
+		line := output[:lineEnd]
+		if len(line) < sha1HexLength+1 ||
+			!bytes.Equal(line[:sha1HexLength], want[:]) ||
+			line[sha1HexLength] != fieldSeparator {
+			return false, errors.New("object check has invalid framing")
+		}
+
+		switch string(line[sha1HexLength+1:]) {
+		case missingObjectStatus:
+		case "blob", "commit", "tag", "tree":
+			return false, nil
+		default:
+			return false, errors.New("object check has an unknown status")
+		}
+		output = output[lineEnd+1:]
+	}
+
+	if len(output) != 0 {
+		return false, errors.New("object check has trailing records")
+	}
+	return true, nil
 }
 
 // parseFirstParentEvents decodes `rev-list --parents` output field by field.

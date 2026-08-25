@@ -164,6 +164,34 @@ func TestFirstParentEventsPreservesWrongTypeParentFailure(t *testing.T) {
 	}
 }
 
+func TestConfirmMissingObjectsAcceptsFullDiagnosticBatch(t *testing.T) {
+	repository, _ := newTestRepository(t)
+	opened := openTestRepository(t, repository)
+	candidates := make([]ObjectID, maxMissingObjectCandidates)
+	for i := range candidates {
+		candidates[i] = mustObjectID(t, fmt.Sprintf("%040x", i+1))
+	}
+	if len(candidates)*missingObjectCheckRecordLength <= maxScalarOutput {
+		t.Fatal("test batch does not exceed the general scalar output limit")
+	}
+
+	confirmed, err := opened.confirmMissingObjects(t.Context(), candidates)
+	if err != nil {
+		t.Fatalf("confirmMissingObjects() error = %v", err)
+	}
+	if !confirmed {
+		t.Fatal("confirmMissingObjects() did not confirm the full diagnostic batch")
+	}
+
+	_, err = opened.confirmMissingObjects(
+		t.Context(),
+		append(candidates, mustObjectID(t, strings.Repeat("f", sha1HexLength))),
+	)
+	if err == nil {
+		t.Fatal("confirmMissingObjects() accepted more candidates than the diagnostic can report")
+	}
+}
+
 func TestParseMissingObjectReport(t *testing.T) {
 	id := strings.Repeat("a", sha1HexLength)
 	other := strings.Repeat("b", sha1HexLength)

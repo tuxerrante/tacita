@@ -17,6 +17,11 @@ const (
 	missingObjectPrefix = '?'
 	fieldSeparator      = ' '
 	recordSeparator     = '\n'
+	missingObjectStatus = "missing"
+
+	missingObjectReportRecordLength = 1 + sha1HexLength + 1
+	missingObjectCheckRecordLength  = sha1HexLength + 1 + len(missingObjectStatus) + 1
+	maxMissingObjectCandidates      = maxScalarOutput / missingObjectReportRecordLength
 )
 
 // ObjectID is a complete lowercase hexadecimal SHA-1 object ID.
@@ -192,6 +197,10 @@ func parseMissingObjectReport(output []byte) ([]ObjectID, error) {
 }
 
 func (r *Repository) confirmMissingObjects(ctx context.Context, candidates []ObjectID) (bool, error) {
+	if len(candidates) > maxMissingObjectCandidates {
+		return false, errors.New("object check candidate limit exceeded")
+	}
+
 	stdin := make([]byte, 0, len(candidates)*(sha1HexLength+1))
 	for _, id := range candidates {
 		stdin = append(stdin, id[:]...)
@@ -202,7 +211,7 @@ func (r *Repository) confirmMissingObjects(ctx context.Context, candidates []Obj
 		ctx,
 		"checking reported missing objects",
 		bytes.NewReader(stdin),
-		maxScalarOutput,
+		len(candidates)*missingObjectCheckRecordLength,
 		"cat-file",
 		"--batch-check=%(objectname) %(objecttype)",
 	)
@@ -228,7 +237,7 @@ func allReportedObjectsMissing(candidates []ObjectID, output []byte) (bool, erro
 		}
 
 		switch string(line[sha1HexLength+1:]) {
-		case "missing":
+		case missingObjectStatus:
 		case "blob", "commit", "tag", "tree":
 			return false, nil
 		default:

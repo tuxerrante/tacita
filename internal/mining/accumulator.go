@@ -6,9 +6,8 @@ import (
 )
 
 const (
-	maxComponentIdentities = 50_000
-	maxPairObservations    = 20_000_000
-	maxPairIdentities      = 2_000_000
+	maxPairObservations = 20_000_000
+	maxPairIdentities   = 2_000_000
 )
 
 // ComponentID is the run-local integer identity of one canonical component.
@@ -49,20 +48,19 @@ type Aggregate struct {
 // Accumulator folds canonical component sets into bounded descriptive state.
 //
 // The zero value is ready to use with the frozen production limits. Observe
-// expects the distinct components of one eligible transaction after ingestion
-// exclusions, in canonical input order.
+// expects canonical component sets from a transaction stream that has already
+// enforced ingestion exclusions and identity budgets.
 type Accumulator struct {
-	initialized            bool
-	componentIdentityLimit int
-	pairObservationLimit   int
-	pairIdentityLimit      int
-	pairObservations       int
-	eligibleTransactions   uint64
-	eligibleWeight         Weights
-	nextComponentID        ComponentID
-	componentIDs           map[string]ComponentID
-	components             []componentState
-	pairs                  map[pairKey]pairState
+	initialized          bool
+	pairObservationLimit int
+	pairIdentityLimit    int
+	pairObservations     int
+	eligibleTransactions uint64
+	eligibleWeight       Weights
+	nextComponentID      ComponentID
+	componentIDs         map[string]ComponentID
+	components           []componentState
+	pairs                map[pairKey]pairState
 }
 
 type componentState struct {
@@ -89,19 +87,17 @@ func NewAccumulator() *Accumulator {
 }
 
 type limits struct {
-	components       int
 	pairObservations int
 	pairs            int
 }
 
 func newAccumulator(limit limits) *Accumulator {
 	return &Accumulator{
-		initialized:            true,
-		componentIdentityLimit: limit.components,
-		pairObservationLimit:   limit.pairObservations,
-		pairIdentityLimit:      limit.pairs,
-		componentIDs:           make(map[string]ComponentID),
-		pairs:                  make(map[pairKey]pairState),
+		initialized:          true,
+		pairObservationLimit: limit.pairObservations,
+		pairIdentityLimit:    limit.pairs,
+		componentIDs:         make(map[string]ComponentID),
+		pairs:                make(map[pairKey]pairState),
 	}
 }
 
@@ -113,16 +109,6 @@ func (a *Accumulator) Observe(components []string) error {
 	ids, pending, err := a.planComponents(components)
 	if err != nil {
 		return err
-	}
-
-	componentIdentities := len(a.components) + len(pending)
-	// Git ingestion enforces this first; repeating it here keeps the allocation
-	// boundary bounded for synthetic and replayed transaction sequences.
-	if componentIdentities > a.componentIdentityLimit {
-		return &ComponentIdentityLimitError{
-			Observed: a.componentIdentityLimit + 1,
-			Limit:    a.componentIdentityLimit,
-		}
 	}
 
 	pairCount := len(ids) * (len(ids) - 1)
@@ -219,7 +205,6 @@ func (a *Accumulator) initialize() {
 	}
 
 	a.initialized = true
-	a.componentIdentityLimit = maxComponentIdentities
 	a.pairObservationLimit = maxPairObservations
 	a.pairIdentityLimit = maxPairIdentities
 	a.componentIDs = make(map[string]ComponentID)

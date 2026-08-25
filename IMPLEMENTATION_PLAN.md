@@ -61,7 +61,7 @@ Implemented:
   transaction visitors observe an over-limit event;
 - bounded single-pass descriptive accumulation with interned components, raw
   and weighted state for all three size modes, detached snapshots, and atomic
-  transaction, component, observation, and pair-budget failures;
+  invalid-transaction, observation, and pair-budget failures;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
@@ -117,8 +117,8 @@ development or holdout corpus:
    identities, maintain component-keyed opportunity and weighted occurrence
    sums, maintain pair-keyed raw and weighted support, compute all three frozen
    size weights and their run-wide eligible-transaction totals side by side,
-   and enforce the component-state, directional-observation, and distinct-pair
-   budgets with typed errors;
+   and enforce the directional-observation and distinct-pair budgets with typed
+   errors;
 2. derive finite descriptive metrics from one completed aggregate, abstain
    below 100 eligible transactions, apply the fixed raw-support floor and all
    81 post-aggregation configurations, and rank eligible candidates with the

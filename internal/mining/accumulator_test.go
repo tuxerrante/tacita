@@ -157,7 +157,6 @@ func TestAccumulatorRejectsPairBudgetExhaustionAtomically(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			accumulator := newAccumulator(limits{
-				components:       10,
 				pairObservations: tt.pairObservationLimit,
 				pairs:            tt.pairIdentityLimit,
 			})
@@ -194,7 +193,6 @@ func TestAccumulatorRejectsPairBudgetExhaustionAtomically(t *testing.T) {
 
 func TestAccumulatorPreservesStateWhenLaterTransactionExceedsPairLimit(t *testing.T) {
 	accumulator := newAccumulator(limits{
-		components:       10,
 		pairObservations: 10,
 		pairs:            2,
 	})
@@ -213,7 +211,6 @@ func TestAccumulatorPreservesStateWhenLaterTransactionExceedsPairLimit(t *testin
 
 func TestAccumulatorAcceptsExactPairLimits(t *testing.T) {
 	accumulator := newAccumulator(limits{
-		components:       2,
 		pairObservations: 2,
 		pairs:            2,
 	})
@@ -262,32 +259,6 @@ func TestAccumulatorRejectsInvalidTransactionsAtomically(t *testing.T) {
 	}
 }
 
-func TestAccumulatorEnforcesComponentIdentityLimitAtomically(t *testing.T) {
-	accumulator := newAccumulator(limits{
-		components:       2,
-		pairObservations: 10,
-		pairs:            10,
-	})
-	if err := accumulator.Observe([]string{"a", "b"}); err != nil {
-		t.Fatalf("first Observe() error = %v", err)
-	}
-	before := accumulator.Snapshot()
-
-	err := accumulator.Observe([]string{"c"})
-
-	if !errors.Is(err, ErrComponentIdentityLimit) {
-		t.Fatalf("second Observe() error = %v, want %v", err, ErrComponentIdentityLimit)
-	}
-	var limitErr *ComponentIdentityLimitError
-	if !errors.As(err, &limitErr) {
-		t.Fatalf("second Observe() error type = %T, want *ComponentIdentityLimitError", err)
-	}
-	if limitErr.Observed != 3 || limitErr.Limit != 2 {
-		t.Errorf("ComponentIdentityLimitError = %+v, want observed 3 limit 2", limitErr)
-	}
-	assertAggregate(t, accumulator.Snapshot(), before)
-}
-
 func TestAccumulatorReportsFirstPairBudgetBreach(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -315,7 +286,6 @@ func TestAccumulatorReportsFirstPairBudgetBreach(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			accumulator := newAccumulator(limits{
-				components:       10,
 				pairObservations: tt.pairObservationLimit,
 				pairs:            tt.pairIdentityLimit,
 			})

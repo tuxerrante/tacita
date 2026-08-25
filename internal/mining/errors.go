@@ -12,9 +12,6 @@ var (
 	// ErrDuplicateComponent identifies a transaction whose component set was not
 	// deduplicated by the ingestion boundary.
 	ErrDuplicateComponent = errors.New("duplicate component in transaction")
-	// ErrComponentIdentityLimit identifies too many distinct components in the
-	// accumulated state.
-	ErrComponentIdentityLimit = errors.New("distinct component identity limit exceeded")
 	// ErrPairObservationLimit identifies too many directional pair observations
 	// in one repository run.
 	ErrPairObservationLimit = errors.New("directional pair observation limit exceeded")
@@ -39,25 +36,6 @@ func (e *DuplicateComponentError) Error() string {
 
 func (e *DuplicateComponentError) Is(target error) bool {
 	return target == ErrDuplicateComponent
-}
-
-// ComponentIdentityLimitError reports accumulated state that would exceed the
-// frozen distinct component budget.
-type ComponentIdentityLimitError struct {
-	Observed int
-	Limit    int
-}
-
-func (e *ComponentIdentityLimitError) Error() string {
-	return fmt.Sprintf(
-		"distinct component identities reached %d, limit %d",
-		e.Observed,
-		e.Limit,
-	)
-}
-
-func (e *ComponentIdentityLimitError) Is(target error) bool {
-	return target == ErrComponentIdentityLimit
 }
 
 // PairObservationLimitError reports a transaction that would exceed the frozen

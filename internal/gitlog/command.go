@@ -71,6 +71,16 @@ func runGit(
 	stdoutLimit int,
 	args ...string,
 ) ([]byte, error) {
+	return runGitInput(ctx, operation, nil, stdoutLimit, args...)
+}
+
+func runGitInput(
+	ctx context.Context,
+	operation string,
+	stdin io.Reader,
+	stdoutLimit int,
+	args ...string,
+) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
@@ -90,6 +100,7 @@ func runGit(
 	// classify a path (see docs/architecture.md#git-process-boundary).
 	cmd := exec.CommandContext(runCtx, "git", args...) //nolint:gosec // G204: fixed command name and argument slice, never a shell
 	cmd.Env = gitEnvironment()
+	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.WaitDelay = gitWaitDelay

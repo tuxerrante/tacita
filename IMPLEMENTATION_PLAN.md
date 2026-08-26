@@ -1,8 +1,8 @@
 # Tacita Implementation Plan
 
-Status: Milestone 0 experiment contract amended and re-frozen
+Status: Milestone 0 contract re-frozen; Milestone 1 ingestion complete
 
-Active milestone: Milestone 1 — safe Git ingestion
+Active milestone: Milestone 2 — descriptive miner
 
 Product implementation: limited to the frozen evidence-first experiment
 
@@ -104,7 +104,7 @@ made after human review of public history but before Tacita produced Kapparmor
 candidate or metric output. The experiment is re-frozen; later changes require
 a newly preregistered run. Kapparmor results cannot modify this table.
 
-## Next implementation step
+## Completed Milestone 1 implementation sequence
 
 Continue Milestone 1 from the smallest independently testable Git boundary. A
 design review before implementation replaced the earlier "extend the executor
@@ -178,7 +178,7 @@ Deliver:
 Exit met: all inputs and acceptance criteria are fixed before holdout results
 are observed.
 
-### 1. Safe Git ingestion
+### 1. Safe Git ingestion — complete 2026-08-25
 
 Deliver:
 

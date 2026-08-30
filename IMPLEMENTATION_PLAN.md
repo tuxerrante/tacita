@@ -1,8 +1,9 @@
 # Tacita Implementation Plan
 
-Status: Milestone 0 contract re-frozen; Milestone 1 ingestion complete
+Status: Milestone 0 contract re-frozen; Milestone 1 ingestion and Milestone 2
+descriptive miner complete
 
-Active milestone: Milestone 2 — descriptive miner
+Active milestone: Milestone 3 — temporal calibration and backtest
 
 Product implementation: limited to the frozen evidence-first experiment
 
@@ -62,13 +63,17 @@ Implemented:
 - bounded single-pass descriptive accumulation with interned components, raw
   and weighted state for all three size modes, detached snapshots, and atomic
   invalid-transaction, observation, and pair-budget failures;
+- deterministic post-aggregation derivation of finite descriptive candidate
+  metrics from one completed aggregate for any of the 81 frozen grid
+  configurations supplied to it, with inference abstention below 100 eligible
+  transactions, the fixed raw-support floor, and the frozen byte-level ranking
+  tie-breakers;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- candidate metric derivation, grid filtering, and ranking;
 - baselines or temporal evaluation;
 - profile evaluation;
 - report schema or rendering;
@@ -119,10 +124,11 @@ development or holdout corpus:
    size weights and their run-wide eligible-transaction totals side by side,
    and enforce the directional-observation and distinct-pair budgets with typed
    errors;
-2. derive finite descriptive metrics from one completed aggregate, abstain
-   below 100 eligible transactions, apply the fixed raw-support floor and all
-   81 post-aggregation configurations, and rank eligible candidates with the
-   frozen byte-level tie-breakers.
+2. completed: derive finite descriptive metrics from one completed aggregate
+   for a supplied configuration, abstain below 100 eligible transactions,
+   apply the fixed raw-support floor, support any of the 81 frozen grid
+   configurations, and rank eligible candidates with the frozen byte-level
+   tie-breakers.
 
 The first pull request owns accumulation and resource exhaustion. The second
 owns candidate eligibility and ordering. Neither introduces temporal cutoffs,
@@ -210,7 +216,7 @@ projection from normalized event paths into bounded, deduplicated component
 transactions is also implemented, and that stream owns the frozen global path
 and component identity budgets. Milestone 1 implementation is complete.
 
-### 2. Descriptive miner
+### 2. Descriptive miner — complete 2026-08-31
 
 Starting from normalized component transactions, deliver directional pair
 aggregation, raw and weighted measures, stable ranking, all 81 frozen
@@ -221,8 +227,10 @@ Aggregation follows the single-pass
 fold with component-keyed and pair-keyed state, three weighted sums, and the
 grid derived by post-aggregation filtering. There is no in-process fan-out.
 
-Exit: exact repeated full-history aggregates and ranked candidates for every
-configuration, bounded behavior, and no development or holdout corpus access.
+Exit met: the accumulation fold and candidate derivation described above both
+produce exact repeated full-history aggregates and ranked candidates for every
+supplied configuration, within bounded behavior, and neither reads the
+development or holdout corpus. Milestone 2 implementation is complete.
 
 ### 3. Temporal calibration and backtest
 

@@ -207,7 +207,7 @@ func TestDeriveCandidatesUsesEachWeightModeSource(t *testing.T) {
 				Antecedent: 0, Consequent: 1, RawSupport: 77, RawOpportunity: 42,
 				WeightedSupport: tt.support, WeightedExposure: tt.exposure,
 				WeightedConfidence: tt.confidence, WeightedPrevalence: tt.prevalence,
-				WeightedLift: tt.lift,
+				WeightedLift: tt.lift, Rank: 1,
 			}
 			if got[0] != want {
 				t.Errorf("candidate = %+v, want %+v", got[0], want)

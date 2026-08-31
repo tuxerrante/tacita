@@ -21,7 +21,7 @@ func TestConfigurationIDFormat(t *testing.T) {
 }
 
 func TestAllConfigurationsGrid(t *testing.T) {
-	weights := []WeightMode{WeightUnit, WeightInverseComponent, WeightPairNormalized}
+	weights := []WeightMode{"unit", "inverse-component", "pair-normalized"}
 	opportunities := []uint64{5, 10, 20}
 	confidences := []float64{0.70, 0.80, 0.90}
 	lifts := []float64{1.25, 1.50, 2.00}
@@ -92,6 +92,7 @@ func TestConfigurationValidateRejectsOutsideGrid(t *testing.T) {
 		name          string
 		configuration Configuration
 		wantField     string
+		wantValue     string
 	}{
 		{
 			name: "unknown weight mode",
@@ -100,6 +101,7 @@ func TestConfigurationValidateRejectsOutsideGrid(t *testing.T) {
 				MinimumConfidence: 0.70, MinimumLift: 1.25,
 			},
 			wantField: "SizeWeight",
+			wantValue: "bogus",
 		},
 		{
 			name: "opportunities outside grid",
@@ -108,6 +110,7 @@ func TestConfigurationValidateRejectsOutsideGrid(t *testing.T) {
 				MinimumConfidence: 0.70, MinimumLift: 1.25,
 			},
 			wantField: "MinimumOpportunities",
+			wantValue: "7",
 		},
 		{
 			name: "confidence outside grid",
@@ -116,6 +119,7 @@ func TestConfigurationValidateRejectsOutsideGrid(t *testing.T) {
 				MinimumConfidence: 0.75, MinimumLift: 1.25,
 			},
 			wantField: "MinimumConfidence",
+			wantValue: "0.75",
 		},
 		{
 			name: "lift outside grid",
@@ -124,6 +128,7 @@ func TestConfigurationValidateRejectsOutsideGrid(t *testing.T) {
 				MinimumConfidence: 0.70, MinimumLift: 1.0,
 			},
 			wantField: "MinimumLift",
+			wantValue: "1",
 		},
 	}
 
@@ -139,6 +144,9 @@ func TestConfigurationValidateRejectsOutsideGrid(t *testing.T) {
 			}
 			if configErr.Field != tt.wantField {
 				t.Errorf("ConfigurationError.Field = %q, want %q", configErr.Field, tt.wantField)
+			}
+			if configErr.Value != tt.wantValue {
+				t.Errorf("ConfigurationError.Value = %q, want %q", configErr.Value, tt.wantValue)
 			}
 		})
 	}

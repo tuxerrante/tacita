@@ -115,8 +115,9 @@ a newly preregistered run. Kapparmor results cannot modify this table.
 ## 🚦 Completed Milestone 2 delivery sequence
 
 Milestone 2 was delivered as four dependency-safe pull requests with one
-motivation each. All operate on synthetic transaction sequences or completed
-aggregates, and none reads the development or holdout corpus:
+motivation each. They operate on frozen configuration values, synthetic
+transaction sequences, or completed aggregates, and none reads the development
+or holdout corpus:
 
 1. completed: add the pure `internal/mining` accumulation fold: intern component
    identities, maintain component-keyed opportunity and weighted occurrence

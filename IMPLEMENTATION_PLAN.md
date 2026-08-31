@@ -16,7 +16,7 @@ definition, experimental protocol, or architecture:
 - [`docs/architecture.md`](docs/architecture.md) defines implementation,
   security, and testing contracts.
 
-## Goal
+## 🎯 Goal
 
 Build the smallest evidence-first vertical slice that can answer:
 
@@ -37,7 +37,7 @@ Product ratification, product manifests, and enforcement begin only after the
 experiment passes its frozen gates. Experiment review manifests are evidence
 artifacts, not product policy.
 
-## Current implementation
+## 🚦 Current implementation
 
 Implemented:
 
@@ -84,7 +84,7 @@ contract is frozen. The implemented Git boundary is likewise provisional and
 still under review; each review pass so far has found and fixed a defect,
 recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
-## Frozen Milestone 0 decisions
+## 📊 Frozen Milestone 0 decisions
 
 Milestone 1 must implement these contracts without changing them from
 development or holdout results:
@@ -112,7 +112,7 @@ made after human review of public history but before Tacita produced Kapparmor
 candidate or metric output. The experiment is re-frozen; later changes require
 a newly preregistered run. Kapparmor results cannot modify this table.
 
-## Completed Milestone 2 delivery sequence
+## 🚦 Completed Milestone 2 delivery sequence
 
 Build Milestone 2 as two dependency-safe pull requests with one motivation
 each. Both operate on synthetic transaction sequences and neither reads the
@@ -142,7 +142,7 @@ any holdout report. Moving that work changes only the operational milestone
 boundary; the frozen grid, selector, corpus, report, and holdout rules remain
 unchanged.
 
-## Design review records
+## 🔍 Design review records
 
 ### Milestone 1 design review record
 
@@ -182,7 +182,7 @@ These findings split independently testable responsibilities and correct the
 milestone boundary. They change no frozen metric, threshold, configuration,
 corpus ID, report field, resource budget, or Git or component semantics.
 
-## Milestones
+## 🚦 Milestones
 
 ### 0. Freeze the experiment — complete 2026-08-16
 
@@ -266,7 +266,7 @@ Choose one:
 
 Enforcement never starts automatically.
 
-## Deferred roadmap
+## 🧭 Deferred roadmap
 
 After a positive Milestone 5 decision, consider in order:
 
@@ -283,7 +283,7 @@ After a positive Milestone 5 decision, consider in order:
 Kubernetes policy, opaque model scoring, network/LLM dependencies in analysis,
 and authorship detection are outside the product boundary.
 
-## Change discipline
+## 🔀 Change discipline
 
 - Update this file when milestone status, blockers, or implementation order
   changes.

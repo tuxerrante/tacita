@@ -21,6 +21,12 @@ var (
 	// ErrInvalidConfiguration identifies a Configuration outside the frozen
 	// 81-point candidate configuration grid.
 	ErrInvalidConfiguration = errors.New("invalid candidate configuration")
+	// ErrDuplicateComponentIdentity identifies an Aggregate whose Components
+	// slice repeats one ComponentID.
+	ErrDuplicateComponentIdentity = errors.New("duplicate component identity in aggregate")
+	// ErrUnknownComponent identifies an Aggregate Pair that references a
+	// ComponentID absent from its Components slice.
+	ErrUnknownComponent = errors.New("unknown component identity in aggregate")
 )
 
 // DuplicateComponentError reports a transaction that repeats one component.
@@ -92,4 +98,32 @@ func (e *ConfigurationError) Error() string {
 
 func (e *ConfigurationError) Is(target error) bool {
 	return target == ErrInvalidConfiguration
+}
+
+// DuplicateComponentIdentityError reports an Aggregate whose Components slice
+// repeats one ComponentID.
+type DuplicateComponentIdentityError struct {
+	ComponentID ComponentID
+}
+
+func (e *DuplicateComponentIdentityError) Error() string {
+	return fmt.Sprintf("duplicate component identity %d in aggregate", e.ComponentID)
+}
+
+func (e *DuplicateComponentIdentityError) Is(target error) bool {
+	return target == ErrDuplicateComponentIdentity
+}
+
+// UnknownComponentError reports an Aggregate Pair that references a
+// ComponentID absent from its Components slice.
+type UnknownComponentError struct {
+	ComponentID ComponentID
+}
+
+func (e *UnknownComponentError) Error() string {
+	return fmt.Sprintf("unknown component identity %d in aggregate", e.ComponentID)
+}
+
+func (e *UnknownComponentError) Is(target error) bool {
+	return target == ErrUnknownComponent
 }

@@ -18,6 +18,9 @@ var (
 	// ErrPairIdentityLimit identifies too many distinct directional pairs in one
 	// repository run.
 	ErrPairIdentityLimit = errors.New("distinct directional pair limit exceeded")
+	// ErrInvalidConfiguration identifies a Configuration outside the frozen
+	// 81-point candidate configuration grid.
+	ErrInvalidConfiguration = errors.New("invalid candidate configuration")
 )
 
 // DuplicateComponentError reports a transaction that repeats one component.
@@ -74,4 +77,19 @@ func (e *PairIdentityLimitError) Error() string {
 
 func (e *PairIdentityLimitError) Is(target error) bool {
 	return target == ErrPairIdentityLimit
+}
+
+// ConfigurationError reports a Configuration field whose value is outside the
+// frozen 81-point candidate configuration grid.
+type ConfigurationError struct {
+	Field string
+	Value string
+}
+
+func (e *ConfigurationError) Error() string {
+	return fmt.Sprintf("invalid configuration field %s value %s", e.Field, e.Value)
+}
+
+func (e *ConfigurationError) Is(target error) bool {
+	return target == ErrInvalidConfiguration
 }

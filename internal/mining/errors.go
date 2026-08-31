@@ -34,6 +34,12 @@ var (
 	// ErrUnknownComponent identifies an Aggregate Pair that references a
 	// ComponentID absent from its Components slice.
 	ErrUnknownComponent = errors.New("unknown component identity in aggregate")
+	// ErrSelfPair identifies an Aggregate containing a directional pair whose
+	// antecedent and consequent are the same component.
+	ErrSelfPair = errors.New("self directional pair in aggregate")
+	// ErrDuplicatePairIdentity identifies an Aggregate that repeats one
+	// directional pair identity.
+	ErrDuplicatePairIdentity = errors.New("duplicate directional pair identity in aggregate")
 )
 
 // DuplicateComponentError reports a transaction that repeats one component.
@@ -147,4 +153,37 @@ func (e *UnknownComponentError) Error() string {
 
 func (e *UnknownComponentError) Is(target error) bool {
 	return target == ErrUnknownComponent
+}
+
+// SelfPairError reports an Aggregate Pair whose antecedent and consequent are
+// the same component.
+type SelfPairError struct {
+	ComponentID ComponentID
+}
+
+func (e *SelfPairError) Error() string {
+	return fmt.Sprintf("self directional pair for component identity %d in aggregate", e.ComponentID)
+}
+
+func (e *SelfPairError) Is(target error) bool {
+	return target == ErrSelfPair
+}
+
+// DuplicatePairIdentityError reports an Aggregate that repeats one directional
+// pair identity.
+type DuplicatePairIdentityError struct {
+	Antecedent ComponentID
+	Consequent ComponentID
+}
+
+func (e *DuplicatePairIdentityError) Error() string {
+	return fmt.Sprintf(
+		"duplicate directional pair identity %d -> %d in aggregate",
+		e.Antecedent,
+		e.Consequent,
+	)
+}
+
+func (e *DuplicatePairIdentityError) Is(target error) bool {
+	return target == ErrDuplicatePairIdentity
 }

@@ -163,11 +163,10 @@ func (w Weights) forMode(mode WeightMode) float64 {
 // always returns a non-nil slice, even when zero pairs qualify, so callers can
 // distinguish "abstained" (nil) from "evaluated, nothing eligible" (non-nil,
 // empty) by a nil check alone. An invalid configuration or a structurally
-// malformed aggregate (a duplicate component identity, a duplicate
-// byte-identical component name, or a pair referencing an identity absent
-// from aggregate.Components) is a typed error. A pair whose derived metrics
-// are not all finite and positive where required is excluded rather than
-// treated as an error.
+// malformed aggregate (a duplicate component identity or byte-identical name,
+// an unknown component reference, a self-pair, or a duplicate directional pair
+// identity) is a typed error. A pair whose derived metrics are not all finite
+// and positive where required is excluded rather than treated as an error.
 func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candidate, error) {
 	if err := configuration.validate(); err != nil {
 		return nil, err
@@ -189,8 +188,13 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 	// non-nil empty slice meaning "evaluated, nothing qualified". Growth is
 	// proportional to eligible output, not preallocated to the pair ceiling.
 	candidates := make([]Candidate, 0)
+	var (
+		previousPair pairKey
+		havePrevious bool
+		seenPairs    map[pairKey]bool
+	)
 
-	for _, pair := range aggregate.Pairs {
+	for pairIndex, pair := range aggregate.Pairs {
 		// Every pair reference is resolved before any raw-support or
 		// opportunity filtering, so a malformed reference always produces the
 		// same typed error regardless of whether the pair would otherwise
@@ -203,6 +207,49 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 		if !ok {
 			return nil, &UnknownComponentError{ComponentID: pair.Consequent}
 		}
+		if pair.Antecedent == pair.Consequent {
+			return nil, &SelfPairError{ComponentID: pair.Antecedent}
+		}
+
+		identity := pairKey{antecedent: pair.Antecedent, consequent: pair.Consequent}
+		if seenPairs != nil && seenPairs[identity] {
+			return nil, &DuplicatePairIdentityError{
+				Antecedent: pair.Antecedent,
+				Consequent: pair.Consequent,
+			}
+		}
+		if seenPairs == nil && havePrevious {
+			switch comparePairKeys(identity, previousPair) {
+			case 0:
+				return nil, &DuplicatePairIdentityError{
+					Antecedent: pair.Antecedent,
+					Consequent: pair.Consequent,
+				}
+			case -1:
+				// Snapshot pairs are strictly sorted, so valid production
+				// aggregates need no duplicate-tracking map. Allocate one
+				// only for an out-of-order hand-built aggregate, seeding it
+				// with the already validated prefix.
+				seenPairs = make(map[pairKey]bool, len(aggregate.Pairs))
+				for _, previous := range aggregate.Pairs[:pairIndex] {
+					seenPairs[pairKey{
+						antecedent: previous.Antecedent,
+						consequent: previous.Consequent,
+					}] = true
+				}
+				if seenPairs[identity] {
+					return nil, &DuplicatePairIdentityError{
+						Antecedent: pair.Antecedent,
+						Consequent: pair.Consequent,
+					}
+				}
+			}
+		}
+		if seenPairs != nil {
+			seenPairs[identity] = true
+		}
+		previousPair = identity
+		havePrevious = true
 
 		if pair.RawSupport < minRawSupport {
 			continue
@@ -271,6 +318,13 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 	}
 
 	return candidates, nil
+}
+
+func comparePairKeys(left, right pairKey) int {
+	return cmp.Or(
+		cmp.Compare(left.antecedent, right.antecedent),
+		cmp.Compare(left.consequent, right.consequent),
+	)
 }
 
 // compareCandidates orders candidates by the frozen ranking precedence:

@@ -724,6 +724,74 @@ func TestDeriveCandidatesRejectsDuplicateComponentName(t *testing.T) {
 	}
 }
 
+func TestDeriveCandidatesRejectsSelfPair(t *testing.T) {
+	aggregate := Aggregate{
+		EligibleTransactions: 100,
+		EligibleWeight:       Weights{Unit: 100},
+		Components: []Component{
+			{ID: 3, Name: "a", RawOpportunity: 20, Occurrence: Weights{Unit: 100}},
+		},
+		Pairs: []Pair{
+			{Antecedent: 3, Consequent: 3, RawSupport: 1, Support: Weights{Unit: 1}},
+		},
+	}
+
+	got, err := DeriveCandidates(aggregate, looseConfiguration())
+
+	if got != nil {
+		t.Errorf("candidates = %v, want nil", got)
+	}
+	if !errors.Is(err, ErrSelfPair) {
+		t.Fatalf("error = %v, want ErrSelfPair", err)
+	}
+	var selfErr *SelfPairError
+	if !errors.As(err, &selfErr) {
+		t.Fatalf("error type = %T, want *SelfPairError", err)
+	}
+	if selfErr.ComponentID != 3 {
+		t.Errorf("SelfPairError.ComponentID = %d, want 3", selfErr.ComponentID)
+	}
+}
+
+func TestDeriveCandidatesRejectsDuplicatePairIdentity(t *testing.T) {
+	aggregate := twoComponentAggregate(100, 100, "a", "b", 20, 100, 10, 90, 10)
+	aggregate.Pairs = append(
+		aggregate.Pairs,
+		Pair{
+			Antecedent: 1,
+			Consequent: 0,
+			RawSupport: 10,
+			Support:    Weights{Unit: 90},
+		},
+		Pair{
+			Antecedent: 0,
+			Consequent: 1,
+			RawSupport: 1,
+			Support:    Weights{Unit: 1},
+		},
+	)
+
+	got, err := DeriveCandidates(aggregate, looseConfiguration())
+
+	if got != nil {
+		t.Errorf("candidates = %v, want nil", got)
+	}
+	if !errors.Is(err, ErrDuplicatePairIdentity) {
+		t.Fatalf("error = %v, want ErrDuplicatePairIdentity", err)
+	}
+	var duplicateErr *DuplicatePairIdentityError
+	if !errors.As(err, &duplicateErr) {
+		t.Fatalf("error type = %T, want *DuplicatePairIdentityError", err)
+	}
+	if duplicateErr.Antecedent != 0 || duplicateErr.Consequent != 1 {
+		t.Errorf(
+			"DuplicatePairIdentityError = %d -> %d, want 0 -> 1",
+			duplicateErr.Antecedent,
+			duplicateErr.Consequent,
+		)
+	}
+}
+
 // rankingAggregate builds an Aggregate with the two given directional pairs,
 // each over its own antecedent/consequent component pair, so ranking tests
 // can isolate exactly one tie-break dimension at a time.

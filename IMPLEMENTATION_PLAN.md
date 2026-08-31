@@ -114,9 +114,9 @@ a newly preregistered run. Kapparmor results cannot modify this table.
 
 ## 🚦 Completed Milestone 2 delivery sequence
 
-Build Milestone 2 as two dependency-safe pull requests with one motivation
-each. Both operate on synthetic transaction sequences and neither reads the
-development or holdout corpus:
+Milestone 2 was delivered as four dependency-safe pull requests with one
+motivation each. All operate on synthetic transaction sequences or completed
+aggregates, and none reads the development or holdout corpus:
 
 1. completed: add the pure `internal/mining` accumulation fold: intern component
    identities, maintain component-keyed opportunity and weighted occurrence
@@ -124,16 +124,18 @@ development or holdout corpus:
    size weights and their run-wide eligible-transaction totals side by side,
    and enforce the directional-observation and distinct-pair budgets with typed
    errors;
-2. completed: derive finite descriptive metrics from one completed aggregate
-   for a supplied configuration, abstain below 100 eligible transactions,
-   apply the fixed raw-support floor, support any of the 81 frozen grid
-   configurations, and rank eligible candidates with the frozen byte-level
-   tie-breakers.
+2. completed: define and validate the 81 frozen grid configurations and their
+   canonical identifiers;
+3. completed: derive finite metrics and apply abstention, raw-support,
+   opportunity, confidence, and lift eligibility for one supplied
+   configuration;
+4. completed: assign the frozen total ranking and reject ambiguous component or
+   directional-pair identities before returning candidates.
 
-The first pull request owns accumulation and resource exhaustion. The second
-owns candidate eligibility and ordering. Neither introduces temporal cutoffs,
-baselines, controls, report encoding, CLI wiring, concurrency, or runtime
-dependencies.
+The four pull requests respectively own accumulation and resource exhaustion,
+configuration enumeration, candidate eligibility, and canonical candidate
+output. None introduces temporal cutoffs, baselines, controls, report encoding,
+CLI wiring, concurrency, or runtime dependencies.
 
 Development calibration is not a Milestone 2 shortcut over final-history
 aggregates. Its selector requires temporal partitions, baselines, controls, and

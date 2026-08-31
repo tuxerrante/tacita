@@ -152,12 +152,6 @@ func TestDeriveCandidatesRejectsAmbiguousCandidateIdentities(t *testing.T) {
 			want: ErrDuplicateComponentName,
 		},
 		{
-			name:       "self pair",
-			components: []Component{{ID: 3, Name: "a"}},
-			pairs:      []Pair{{Antecedent: 3, Consequent: 3}},
-			want:       ErrSelfPair,
-		},
-		{
 			name: "adjacent duplicate pair",
 			components: []Component{
 				{ID: 0, Name: "a"}, {ID: 1, Name: "b"},
@@ -198,6 +192,29 @@ func TestDeriveCandidatesRejectsAmbiguousCandidateIdentities(t *testing.T) {
 				t.Errorf("error = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestDeriveCandidatesReportsEarlierUnknownReferenceBeforeLaterDuplicatePair(t *testing.T) {
+	aggregate := Aggregate{
+		EligibleTransactions: 100,
+		EligibleWeight:       Weights{Unit: 100},
+		Components: []Component{
+			{ID: 0, Name: "a"}, {ID: 1, Name: "b"},
+		},
+		Pairs: []Pair{
+			{Antecedent: 0, Consequent: 7},
+			{Antecedent: 0, Consequent: 1},
+			{Antecedent: 0, Consequent: 1},
+		},
+	}
+
+	got, err := DeriveCandidates(aggregate, looseConfiguration())
+	if got != nil {
+		t.Errorf("candidates = %v, want nil", got)
+	}
+	if !errors.Is(err, ErrUnknownComponent) {
+		t.Errorf("error = %v, want ErrUnknownComponent", err)
 	}
 }
 

@@ -19,6 +19,10 @@ type Candidate struct {
 	WeightedConfidence float64
 	WeightedPrevalence float64
 	WeightedLift       float64
+	Rank               int
+
+	antecedentName string
+	consequentName string
 }
 
 func (w Weights) forMode(mode WeightMode) float64 {
@@ -51,6 +55,9 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 
 	components, err := indexComponents(aggregate.Components)
 	if err != nil {
+		return nil, err
+	}
+	if err := validatePairIdentities(aggregate.Pairs); err != nil {
 		return nil, err
 	}
 
@@ -112,18 +119,27 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 			WeightedConfidence: weightedConfidence,
 			WeightedPrevalence: weightedPrevalence,
 			WeightedLift:       weightedLift,
+			antecedentName:     antecedent.Name,
+			consequentName:     consequent.Name,
 		})
 	}
+
+	rankCandidates(candidates)
 
 	return candidates, nil
 }
 
 func indexComponents(components []Component) (map[ComponentID]Component, error) {
 	index := make(map[ComponentID]Component, len(components))
+	names := make(map[string]bool, len(components))
 	for _, component := range components {
 		if _, exists := index[component.ID]; exists {
 			return nil, &DuplicateComponentIdentityError{ComponentID: component.ID}
 		}
+		if names[component.Name] {
+			return nil, &DuplicateComponentNameError{Name: component.Name}
+		}
+		names[component.Name] = true
 		index[component.ID] = component
 	}
 

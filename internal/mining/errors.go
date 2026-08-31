@@ -24,12 +24,18 @@ var (
 	// ErrDuplicateComponentIdentity identifies an Aggregate whose Components
 	// slice repeats one ComponentID.
 	ErrDuplicateComponentIdentity = errors.New("duplicate component identity in aggregate")
+	// ErrDuplicateComponentName identifies an Aggregate whose Components slice
+	// repeats one byte-identical name.
+	ErrDuplicateComponentName = errors.New("duplicate component name in aggregate")
 	// ErrUnknownComponent identifies an Aggregate Pair that references a
 	// ComponentID absent from its Components slice.
 	ErrUnknownComponent = errors.New("unknown component identity in aggregate")
 	// ErrSelfPair identifies an Aggregate containing a pair whose endpoints are
 	// the same component.
 	ErrSelfPair = errors.New("self directional pair in aggregate")
+	// ErrDuplicatePairIdentity identifies an Aggregate that repeats one
+	// directional pair identity.
+	ErrDuplicatePairIdentity = errors.New("duplicate directional pair identity in aggregate")
 )
 
 // DuplicateComponentError reports a transaction that repeats one component.
@@ -117,6 +123,20 @@ func (e *DuplicateComponentIdentityError) Is(target error) bool {
 	return target == ErrDuplicateComponentIdentity
 }
 
+// DuplicateComponentNameError reports an Aggregate whose Components slice
+// repeats one byte-identical name.
+type DuplicateComponentNameError struct {
+	Name string
+}
+
+func (e *DuplicateComponentNameError) Error() string {
+	return fmt.Sprintf("duplicate component name %q in aggregate", e.Name)
+}
+
+func (e *DuplicateComponentNameError) Is(target error) bool {
+	return target == ErrDuplicateComponentName
+}
+
 // UnknownComponentError reports an Aggregate Pair that references a
 // ComponentID absent from its Components slice.
 type UnknownComponentError struct {
@@ -142,4 +162,22 @@ func (e *SelfPairError) Error() string {
 
 func (e *SelfPairError) Is(target error) bool {
 	return target == ErrSelfPair
+}
+
+// DuplicatePairIdentityError reports an Aggregate that repeats one pair.
+type DuplicatePairIdentityError struct {
+	Antecedent ComponentID
+	Consequent ComponentID
+}
+
+func (e *DuplicatePairIdentityError) Error() string {
+	return fmt.Sprintf(
+		"duplicate directional pair identity %d -> %d in aggregate",
+		e.Antecedent,
+		e.Consequent,
+	)
+}
+
+func (e *DuplicatePairIdentityError) Is(target error) bool {
+	return target == ErrDuplicatePairIdentity
 }

@@ -57,13 +57,11 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePairIdentities(aggregate.Pairs); err != nil {
-		return nil, err
-	}
 
 	eligibleWeight := aggregate.EligibleWeight.forMode(configuration.SizeWeight)
 	candidates := make([]Candidate, 0)
-	for _, pair := range aggregate.Pairs {
+	var pairIdentities pairIdentityValidator
+	for pairIndex, pair := range aggregate.Pairs {
 		antecedent, ok := components[pair.Antecedent]
 		if !ok {
 			return nil, &UnknownComponentError{ComponentID: pair.Antecedent}
@@ -74,6 +72,9 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 		}
 		if pair.Antecedent == pair.Consequent {
 			return nil, &SelfPairError{ComponentID: pair.Antecedent}
+		}
+		if err := pairIdentities.observe(aggregate.Pairs, pairIndex, pair); err != nil {
+			return nil, err
 		}
 
 		if pair.RawSupport < minRawSupport {

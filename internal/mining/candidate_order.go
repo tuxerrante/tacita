@@ -37,45 +37,39 @@ func compareCandidates(left, right Candidate) int {
 	return cmp.Compare(left.consequentName, right.consequentName)
 }
 
-func validatePairIdentities(pairs []Pair) error {
-	var (
-		previous     pairKey
-		havePrevious bool
-		seen         map[pairKey]bool
-	)
+type pairIdentityValidator struct {
+	previous     pairKey
+	havePrevious bool
+	seen         map[pairKey]bool
+}
 
-	for index, pair := range pairs {
-		if pair.Antecedent == pair.Consequent {
-			return &SelfPairError{ComponentID: pair.Antecedent}
-		}
-
-		identity := pairKey{antecedent: pair.Antecedent, consequent: pair.Consequent}
-		if seen != nil && seen[identity] {
+func (v *pairIdentityValidator) observe(pairs []Pair, index int, pair Pair) error {
+	identity := pairKey{antecedent: pair.Antecedent, consequent: pair.Consequent}
+	if v.seen != nil && v.seen[identity] {
+		return duplicatePairError(identity)
+	}
+	if v.seen == nil && v.havePrevious {
+		switch comparePairKeys(identity, v.previous) {
+		case 0:
 			return duplicatePairError(identity)
-		}
-		if seen == nil && havePrevious {
-			switch comparePairKeys(identity, previous) {
-			case 0:
+		case -1:
+			v.seen = make(map[pairKey]bool, len(pairs))
+			for _, prior := range pairs[:index] {
+				v.seen[pairKey{
+					antecedent: prior.Antecedent,
+					consequent: prior.Consequent,
+				}] = true
+			}
+			if v.seen[identity] {
 				return duplicatePairError(identity)
-			case -1:
-				seen = make(map[pairKey]bool, len(pairs))
-				for _, prior := range pairs[:index] {
-					seen[pairKey{
-						antecedent: prior.Antecedent,
-						consequent: prior.Consequent,
-					}] = true
-				}
-				if seen[identity] {
-					return duplicatePairError(identity)
-				}
 			}
 		}
-		if seen != nil {
-			seen[identity] = true
-		}
-		previous = identity
-		havePrevious = true
 	}
+	if v.seen != nil {
+		v.seen[identity] = true
+	}
+	v.previous = identity
+	v.havePrevious = true
 
 	return nil
 }

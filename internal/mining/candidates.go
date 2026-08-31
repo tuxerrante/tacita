@@ -65,6 +65,9 @@ func DeriveCandidates(aggregate Aggregate, configuration Configuration) ([]Candi
 		if !ok {
 			return nil, &UnknownComponentError{ComponentID: pair.Consequent}
 		}
+		if pair.Antecedent == pair.Consequent {
+			return nil, &SelfPairError{ComponentID: pair.Antecedent}
+		}
 
 		if pair.RawSupport < minRawSupport {
 			continue

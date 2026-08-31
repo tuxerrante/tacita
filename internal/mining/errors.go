@@ -27,6 +27,9 @@ var (
 	// ErrUnknownComponent identifies an Aggregate Pair that references a
 	// ComponentID absent from its Components slice.
 	ErrUnknownComponent = errors.New("unknown component identity in aggregate")
+	// ErrSelfPair identifies an Aggregate containing a pair whose endpoints are
+	// the same component.
+	ErrSelfPair = errors.New("self directional pair in aggregate")
 )
 
 // DuplicateComponentError reports a transaction that repeats one component.
@@ -126,4 +129,17 @@ func (e *UnknownComponentError) Error() string {
 
 func (e *UnknownComponentError) Is(target error) bool {
 	return target == ErrUnknownComponent
+}
+
+// SelfPairError reports an Aggregate Pair whose endpoints are the same.
+type SelfPairError struct {
+	ComponentID ComponentID
+}
+
+func (e *SelfPairError) Error() string {
+	return fmt.Sprintf("self directional pair for component identity %d in aggregate", e.ComponentID)
+}
+
+func (e *SelfPairError) Is(target error) bool {
+	return target == ErrSelfPair
 }

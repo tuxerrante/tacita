@@ -285,6 +285,14 @@ func TestDeriveCandidatesRejectsMalformedComponentReferences(t *testing.T) {
 			pair: Pair{Antecedent: 0, Consequent: 0, RawSupport: 10, Support: Weights{Unit: 90}},
 			want: ErrDuplicateComponentIdentity,
 		},
+		{
+			name: "self pair",
+			components: []Component{
+				{ID: 3, Name: "a", RawOpportunity: 20, Occurrence: Weights{Unit: 100}},
+			},
+			pair: Pair{Antecedent: 3, Consequent: 3, RawSupport: 1, Support: Weights{Unit: 1}},
+			want: ErrSelfPair,
+		},
 	}
 
 	for _, tt := range tests {

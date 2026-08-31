@@ -112,7 +112,7 @@ made after human review of public history but before Tacita produced Kapparmor
 candidate or metric output. The experiment is re-frozen; later changes require
 a newly preregistered run. Kapparmor results cannot modify this table.
 
-## Next implementation steps
+## Completed Milestone 2 delivery sequence
 
 Build Milestone 2 as two dependency-safe pull requests with one motivation
 each. Both operate on synthetic transaction sequences and neither reads the

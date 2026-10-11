@@ -604,6 +604,18 @@ therefore retained in memory and the same accumulation runs again over the
 control ordering. Keeping accumulation a pure function of an event sequence is
 what makes the control almost free; it is also the clearest form.
 
+`internal/backtest` implements this composition. A positioner assigns each
+eligible transaction its one-based first-parent event index by advancing over
+the chain that ingestion produced, so a transaction whose event is missing,
+repeated, or out of chain order fails instead of taking another event's index.
+Retained transactions keep their event and components, never their paths. The
+fold snapshots its single accumulator when the next transaction passes a
+cutoff's training end, so each snapshot holds exactly that cutoff's training
+prefix, and it continues to the last transaction. Every snapshot is derived for
+every supplied grid configuration and keeps only the first 10 ranked
+candidates, with component bytes restored, because component IDs are local to
+one accumulation and cannot be compared across orderings.
+
 This strategy depends on the frozen no-decay decision. If a later experiment
 introduces temporal decay, retained weights change as the cutoff advances, the
 running-total fold is no longer valid, and this section must be revisited

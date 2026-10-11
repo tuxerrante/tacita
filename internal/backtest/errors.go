@@ -22,13 +22,13 @@ var (
 	ErrUnmatchedTransaction = errors.New("transaction does not match the event chain")
 )
 
-// EventCountError reports an event count outside one to the frozen event cap.
+// EventCountError reports an event count outside two to the frozen event cap.
 type EventCountError struct {
 	Count int
 }
 
 func (e *EventCountError) Error() string {
-	return fmt.Sprintf("integration event count %d, require 1 to %d", e.Count, maxEvents)
+	return fmt.Sprintf("integration event count %d, require %d to %d", e.Count, minEvents, maxEvents)
 }
 
 func (e *EventCountError) Is(target error) bool {

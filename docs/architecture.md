@@ -604,7 +604,9 @@ therefore retained in memory and the same accumulation runs again over the
 control ordering. Keeping accumulation a pure function of an event sequence is
 what makes the control almost free; it is also the clearest form.
 
-`internal/backtest` implements this composition. A positioner assigns each
+`internal/backtest` implements this composition. Each cutoff names event
+`E[b(p)]`, so a chain shorter than two events, whose `b(60)` is zero, is
+rejected rather than given a cutoff with no event. A positioner assigns each
 eligible transaction its one-based first-parent event index by advancing over
 the chain that ingestion produced, so a transaction whose event is missing,
 repeated, or out of chain order fails instead of taking another event's index.

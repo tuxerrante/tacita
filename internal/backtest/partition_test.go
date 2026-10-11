@@ -43,13 +43,13 @@ func TestPartitions(t *testing.T) {
 			},
 		},
 		{
-			name:       "root only",
-			eventCount: 1,
+			name:       "shortest chain with a named cutoff",
+			eventCount: 2,
 			want: []Partition{
-				{Percentile: 60, TrainingEnd: 0, EvaluationEnd: 0},
-				{Percentile: 70, TrainingEnd: 0, EvaluationEnd: 0},
-				{Percentile: 80, TrainingEnd: 0, EvaluationEnd: 0},
-				{Percentile: 90, TrainingEnd: 0, EvaluationEnd: 1},
+				{Percentile: 60, TrainingEnd: 1, EvaluationEnd: 1},
+				{Percentile: 70, TrainingEnd: 1, EvaluationEnd: 1},
+				{Percentile: 80, TrainingEnd: 1, EvaluationEnd: 1},
+				{Percentile: 90, TrainingEnd: 1, EvaluationEnd: 2},
 			},
 		},
 		{
@@ -81,7 +81,7 @@ func TestPartitions(t *testing.T) {
 }
 
 func TestPartitionsRejectsEventCountsOutsideTheCap(t *testing.T) {
-	for _, count := range []int{-1, 0, 200_001} {
+	for _, count := range []int{-1, 0, 1, 200_001} {
 		got, err := Partitions(count)
 		if !errors.Is(err, ErrInvalidEventCount) {
 			t.Errorf("Partitions(%d) error = %v, want ErrInvalidEventCount", count, err)
@@ -151,7 +151,7 @@ func TestErrorMessagesNameTheOffendingValues(t *testing.T) {
 		err  error
 		want string
 	}{
-		{err: &EventCountError{Count: 0}, want: "integration event count 0, require 1 to 200000"},
+		{err: &EventCountError{Count: 1}, want: "integration event count 1, require 2 to 200000"},
 		{err: &PartitionError{Index: 2}, want: "partition 2 is not a nested expanding cutoff"},
 		{
 			err:  &TransactionOrderError{Index: 3, Position: 4, Previous: 5, Limit: 9},

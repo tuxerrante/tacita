@@ -2,9 +2,15 @@
 // integration history over the pure descriptive miner.
 package backtest
 
-// maxEvents is the frozen cap on first-parent integration events scanned in
-// one run. Ingestion enforces it; here it also bounds p * N below overflow.
-const maxEvents = 200_000
+const (
+	// minEvents is the shortest chain whose first cutoff names an event:
+	// b(60) = floor(60 * N / 100) reaches 1 only when N is at least 2, and the
+	// cutoff object ID is that of event E[b(p)].
+	minEvents = 2
+	// maxEvents is the frozen cap on first-parent integration events scanned in
+	// one run. Ingestion enforces it; here it also bounds p * N below overflow.
+	maxEvents = 200_000
+)
 
 // cutoffPercentiles are the frozen expanding-history cutoffs in report order.
 var cutoffPercentiles = [...]int{60, 70, 80, 90}
@@ -23,9 +29,10 @@ type Partition struct {
 
 // Partitions returns the four frozen partitions of an ordering of eventCount
 // events, b(p) = floor(p * N / 100), with the last evaluation window ending at
-// event N.
+// event N. Every cutoff names an event, so a chain shorter than two events is
+// rejected rather than given a cutoff at index zero.
 func Partitions(eventCount int) ([]Partition, error) {
-	if eventCount < 1 || eventCount > maxEvents {
+	if eventCount < minEvents || eventCount > maxEvents {
 		return nil, &EventCountError{Count: eventCount}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/tuxerrante/tacita/internal/gitlog"
 )
@@ -45,9 +46,6 @@ func TestPositionerSkipsExcludedEvents(t *testing.T) {
 		if got.Position != index+1 || got.Event != events[index] {
 			t.Errorf("Position(event %d) = position %d event %s, want position %d event %s",
 				index, got.Position, got.Event.ID, index+1, events[index].ID)
-		}
-		if &got.Components[0] != &components[0] {
-			t.Errorf("Position(event %d) copied the components instead of retaining them", index)
 		}
 	}
 }
@@ -87,6 +85,50 @@ func TestPositionerRejectsTransactionsOutsideTheRemainingChain(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPositionerDetachesComponentsFromPaths covers ingestion slicing each
+// component from a path: keeping that substring would keep the whole path
+// allocation alive, so each distinct component is copied once and shared.
+func TestPositionerDetachesComponentsFromPaths(t *testing.T) {
+	events := testChain(3)
+	positioner := NewPositioner(events)
+	first := strings.Repeat("a", 8) + "/" + strings.Repeat("x", 1<<16)
+	second := strings.Repeat("a", 8) + "/" + strings.Repeat("y", 1<<16)
+
+	var got []Transaction
+	for index, path := range []string{first, second} {
+		component := path[:strings.IndexByte(path, '/')]
+		positioned, err := positioner.Position(gitlog.Transaction{
+			Event:      events[index+1],
+			Paths:      []string{path},
+			Components: []string{component},
+		})
+		if err != nil {
+			t.Fatalf("Position(%d) error = %v", index, err)
+		}
+		got = append(got, positioned)
+	}
+
+	for index, path := range []string{first, second} {
+		component := got[index].Components[0]
+		if component != "aaaaaaaa" {
+			t.Fatalf("component %d = %q, want aaaaaaaa", index, component)
+		}
+		if sharesMemory(component, path) {
+			t.Errorf("component %d still points into its path's allocation", index)
+		}
+	}
+	if unsafe.StringData(got[0].Components[0]) != unsafe.StringData(got[1].Components[0]) {
+		t.Error("the same component was copied twice instead of shared")
+	}
+}
+
+// sharesMemory reports whether part's bytes lie inside whole's allocation.
+func sharesMemory(part, whole string) bool {
+	start := uintptr(unsafe.Pointer(unsafe.StringData(whole)))
+	at := uintptr(unsafe.Pointer(unsafe.StringData(part)))
+	return at >= start && at < start+uintptr(len(whole))
 }
 
 // TestPositionerMatchesIngestion positions the transactions ingestion visits in

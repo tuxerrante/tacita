@@ -608,7 +608,10 @@ what makes the control almost free; it is also the clearest form.
 eligible transaction its one-based first-parent event index by advancing over
 the chain that ingestion produced, so a transaction whose event is missing,
 repeated, or out of chain order fails instead of taking another event's index.
-Retained transactions keep their event and components, never their paths. The
+Retained transactions keep their event and components, never their paths.
+Ingestion slices each component from a path, so the positioner copies each
+distinct component once and shares the copy; a retained component never keeps
+its source path's allocation alive. The
 fold snapshots its single accumulator when the next transaction passes a
 cutoff's training end, so each snapshot holds exactly that cutoff's training
 prefix, and it continues to the last transaction. Every snapshot is derived for

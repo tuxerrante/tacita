@@ -72,13 +72,16 @@ Implemented:
   sequence, chain-order positioning of eligible transactions, one fold with a
   detached training snapshot at each cutoff, and the first 10 ranked
   candidates of every supplied grid configuration at each cutoff;
+- indexed evaluation windows with pooled micro and macro adherence, coverage,
+  cutoff abstention, adjacent-cutoff Jaccard, and Kendall tau-b diagnostics,
+  each undefined value carrying its frozen reason;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- evaluation metrics, baselines, controls, or engineering gates;
+- baselines, controls, or engineering gates;
 - profile evaluation;
 - report schema or rendering;
 - proposal, ratification, manifests, or checking.

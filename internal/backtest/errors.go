@@ -20,6 +20,9 @@ var (
 	// ErrUnmatchedTransaction identifies a transaction whose event is not the
 	// next unused event of the first-parent chain.
 	ErrUnmatchedTransaction = errors.New("transaction does not match the event chain")
+	// ErrCutoffCount identifies evaluation input whose cutoffs and windows do
+	// not pair one to one.
+	ErrCutoffCount = errors.New("cutoffs do not match evaluation windows")
 )
 
 // EventCountError reports an event count outside two to the frozen event cap.
@@ -83,4 +86,19 @@ func (e *UnmatchedTransactionError) Error() string {
 
 func (e *UnmatchedTransactionError) Is(target error) bool {
 	return target == ErrUnmatchedTransaction
+}
+
+// CutoffCountError reports evaluation input with no windows or with a
+// different number of cutoffs and windows.
+type CutoffCountError struct {
+	Windows int
+	Cutoffs int
+}
+
+func (e *CutoffCountError) Error() string {
+	return fmt.Sprintf("%d cutoffs for %d evaluation windows", e.Cutoffs, e.Windows)
+}
+
+func (e *CutoffCountError) Is(target error) bool {
+	return target == ErrCutoffCount
 }

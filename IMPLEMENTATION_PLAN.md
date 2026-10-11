@@ -167,18 +167,20 @@ development corpus. No step reads the configuration holdout:
    configuration;
 5. encode the calibration subset of `tacita.report/v1` and `tacita.grid/v1`
    canonically, with the report row and byte budgets;
-6. apply `development-selector-v1` across both development reports and write
-   `tacita.dev-lock/v1`, or record that the lane fails because no
+6. implement `development-selector-v1` and the `tacita.dev-lock/v1` writer
+   over two supplied development reports, including the lane failure when no
    configuration is selectable;
 7. replace the disposable `backtest` shell with a calibration command over one
    repository, enforcing the elapsed-time budget and writing the canonical
-   report;
+   report, and a selection command over the two development reports;
 8. run calibration on the frozen development and control corpus twice in the
-   reference environment, record the operational sidecars, and record the
-   development outcome in [`docs/experiment.md`](docs/experiment.md).
+   reference environment, apply the selector to the resulting development
+   reports to write the lock or record the lane failure, record the
+   operational sidecars, and record the development outcome in
+   [`docs/experiment.md`](docs/experiment.md).
 
 Holdout tooling, the review manifest, and the blinded review are built only if
-step 6 produces a lock. If no configuration is selectable, the frozen protocol
+step 8 produces a lock. If no configuration is selectable, the frozen protocol
 fails the inferred lane without running Tacita on the configuration holdout,
 and Milestone 3 exits with that no-go result.
 
@@ -188,14 +190,13 @@ and Milestone 3 exits with that no-go result.
 
 A pre-implementation review against the frozen commits recorded these
 outcomes. Event counts come from `git rev-list` (Git 2.54.0) on full bare
-clones; retained
-sizes come from a throwaway first-parent replay of the same commits, not from
-Tacita, and are re-measured by Tacita in steps 1 and 8:
+clones; retained sizes come from a throwaway first-parent replay of the same
+commits, not from Tacita, and are re-measured by Tacita in steps 1 and 8:
 
 | Question | Outcome |
 | --- | --- |
 | Where do cutoff boundaries fall? | Over all first-parent events, root included: `golang/tools` has 10,693 events and Kubernetes 58,699, so `b(60)` is 6,415 and 35,219. `go-starter` has 428 and Proficiency 46, below the inference floor. |
-| Can the fold retain transactions for the shuffled replay? | Yes, as component sets only. Kubernetes retains 201,336 component entries totalling 5.9 MB of component bytes; paths are not retained. |
+| Can the fold retain transactions for the shuffled replay? | Yes, as component sets only, with component bytes detached from the path strings they were sliced from. Kubernetes retains 201,336 component entries totalling 5.9 MB of component bytes; paths are not retained. |
 | Does the fold stop at `b(90)`? | No. It folds every eligible transaction, so pair-budget observations are those of the full history in both orderings, and the final aggregate is the partition `100` proposal when a backtest needs one. |
 | Which object ID keys the hash-shuffled order? | The frozen repository commit, the resolved tip in the corpus table, which is also what the development lock lists as each repository object ID. It is joined with each event's object ID as the protocol specifies. |
 | How do excluded events take part in the shuffled order? | Every event is ordered, root and excluded events included, so `b(p)` keeps its meaning; eligible transactions keep the position their event received. |
@@ -203,7 +204,8 @@ Tacita, and are re-measured by Tacita in steps 1 and 8:
 
 These outcomes fix composition and resource use. They change no frozen metric,
 threshold, configuration, corpus ID, report field, resource budget, or Git or
-component semantics.
+component semantics. Each one is recorded in the document that owns it by the
+pull request that implements it.
 
 ### Milestone 1 design review record
 

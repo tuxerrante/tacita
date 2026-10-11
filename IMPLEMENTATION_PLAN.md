@@ -75,13 +75,16 @@ Implemented:
 - indexed evaluation windows with pooled micro and macro adherence, coverage,
   cutoff abstention, adjacent-cutoff Jaccard, and Kendall tau-b diagnostics,
   each undefined value carrying its frozen reason;
+- frequent-consequent and unweighted baselines for every configuration, the
+  frozen hash-shuffled event order replayed through the same fold and
+  evaluation, and the no-history control;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- baselines, controls, or engineering gates;
+- engineering gate decisions;
 - profile evaluation;
 - report schema or rendering;
 - proposal, ratification, manifests, or checking.

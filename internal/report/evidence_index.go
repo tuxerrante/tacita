@@ -12,8 +12,10 @@ const (
 	// ExperimentID names the first preregistered experiment.
 	ExperimentID = "tacita-experiment-1"
 	// maxEvidenceBytes bounds an evidence index, which lists a few dozen
-	// digests and outcomes, before it is parsed.
+	// digests and outcomes, on encoding and before it is parsed.
 	maxEvidenceBytes = 1 << 20
+	// runsPerRepository is how many times the harness runs each repository.
+	runsPerRepository = 2
 )
 
 // Artifact kinds, in index order.
@@ -133,8 +135,12 @@ func EncodeEvidenceIndex(index EvidenceIndex) ([]byte, error) {
 	if err != nil {
 		return nil, &EncodeError{Detail: err.Error()}
 	}
+	encoded = append(encoded, '\n')
+	if len(encoded) > maxEvidenceBytes {
+		return nil, invalid("evidence index holds %d bytes, budget %d", len(encoded), maxEvidenceBytes)
+	}
 
-	return append(encoded, '\n'), nil
+	return encoded, nil
 }
 
 // DecodeEvidenceIndex parses canonical index bytes and verifies the digest.
@@ -199,7 +205,8 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 		lock := artifact.Kind == ArtifactDevelopmentLock
 		if !oneOf(artifactKinds, artifact.Kind) || !isDigest(artifact.Digest) ||
 			lock != (artifact.RepositoryObjectID == nil) || lock != (artifact.Run == nil) ||
-			(!lock && (corpusPosition(artifact.RepositoryObjectID) == len(CalibrationCorpus()) || *artifact.Run < 1)) {
+			(!lock && (corpusPosition(artifact.RepositoryObjectID) == len(CalibrationCorpus()) ||
+				*artifact.Run < 1 || *artifact.Run > runsPerRepository)) {
 			return invalid("evidence artifact %d", index)
 		}
 		if index > 0 && compareArtifacts(fields.Artifacts[index-1], artifact) >= 0 {
@@ -219,8 +226,10 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 	for index, gate := range fields.AnalyticalGates {
 		development := corpusPosition(&gate.RepositoryObjectID) < 2
 		if (artifactKey{commit: gate.RepositoryObjectID, run: gate.Run}) != reports[index] ||
-			!oneOf(gateOutcomes, gate.Outcome) || development != (gate.PassingConfigurations != nil) ||
-			(gate.PassingConfigurations != nil && *gate.PassingConfigurations < 0) {
+			!oneOf([]string{outcomePass, outcomeFail}, gate.Outcome) ||
+			development != (gate.PassingConfigurations != nil) ||
+			(development && (*gate.PassingConfigurations < 0 ||
+				(*gate.PassingConfigurations > 0) != (gate.Outcome == outcomePass))) {
 			return invalid("evidence analytical gate %d does not match its report", index)
 		}
 	}

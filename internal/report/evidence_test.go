@@ -303,6 +303,22 @@ func TestEvidenceIndexRejectsInvalidContents(t *testing.T) {
 		"a development report without a count": func(f *EvidenceFields) { f.AnalyticalGates[0].PassingConfigurations = nil },
 		"a missing operational gate":           func(f *EvidenceFields) { f.OperationalGates = f.OperationalGates[1:] },
 		"an operational gate for a third run":  func(f *EvidenceFields) { f.OperationalGates[1].Run = 3 },
+		"a third run everywhere": func(f *EvidenceFields) {
+			for index := range f.Artifacts {
+				if f.Artifacts[index].Run != nil && *f.Artifacts[index].Run == 2 && *f.Artifacts[index].RepositoryObjectID == Proficiency().Commit {
+					third := 3
+					f.Artifacts[index].Run = &third
+				}
+			}
+			f.AnalyticalGates[7].Run, f.OperationalGates[7].Run = 3, 3
+		},
+		"an inconclusive analytical gate": func(f *EvidenceFields) { f.AnalyticalGates[4].Outcome = outcomeInconclusive },
+		"a passing count of zero": func(f *EvidenceFields) {
+			zero := 0
+			f.AnalyticalGates[2].PassingConfigurations = &zero
+			f.AnalyticalGates[2].Outcome = outcomePass
+		},
+		"a failing positive count": func(f *EvidenceFields) { f.AnalyticalGates[0].Outcome = outcomeFail },
 		"a report without a sidecar": func(f *EvidenceFields) {
 			f.Artifacts = slices.DeleteFunc(f.Artifacts, func(a Artifact) bool {
 				return a.Kind == ArtifactOperationalSidecar && *a.Run == 1 && *a.RepositoryObjectID == GolangTools().Commit
@@ -470,4 +486,29 @@ func FuzzDecodeOperation(f *testing.F) {
 			t.Fatalf("accepted sidecar is not canonical:\n%q\n%q", data, again)
 		}
 	})
+}
+
+func TestEncodeEvidenceIndexEnforcesItsByteBudget(t *testing.T) {
+	input := selectionInput(t,
+		map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}},
+		map[string]keys{unitLoose: {fail: true}},
+	)
+	selection, err := Select(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := BuildEvidence(EvidenceInput{Runs: recordedRuns(t, input), Selection: &selection})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := EncodeEvidenceIndex(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeEvidenceIndex(encoded); err != nil {
+		t.Errorf("an encoded index does not round-trip: %v", err)
+	}
+	if len(encoded) > maxEvidenceBytes {
+		t.Errorf("a recorded run's index is %d bytes, over the budget", len(encoded))
+	}
 }

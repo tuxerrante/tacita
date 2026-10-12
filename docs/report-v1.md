@@ -473,13 +473,16 @@ The field names are `schema`, `experiment_id` (`tacita-experiment-1`),
   `repository_object_id` and `run`, both `null` for the lock, and `digest`.
   Artifacts are ordered by kind as listed, then by corpus order, then by run;
 - each analytical gate holds `repository_object_id`, `run`, `outcome`, and
-  `passing_configurations`. A development report passes when at least one
-  configuration passes every gate there, and its count is recorded. A control
-  report passes when its role's control passes, and its count is `null`. A
-  report that is not `complete` fails;
+  `passing_configurations`, one per analytical report artifact in the same
+  order. Its outcome is `pass` or `fail`. A development report records how many
+  configurations pass every gate there, zero when it is not `complete`, and
+  passes exactly when that count is positive. A control report records a
+  `null` count and passes when its role's control passes;
 - each operational gate holds `repository_object_id`, `run`,
   `elapsed_outcome`, and `memory_outcome`, `pass` or `fail` against the frozen
-  20-minute and 2 GiB budgets;
+  20-minute and 2 GiB budgets, one per operational sidecar artifact in the
+  same order. Every analytical report has a sidecar for the same run, and runs
+  are numbered 1 and 2;
 - `product_review_gates` stays empty until a blinded review exists;
 - `lanes` holds `inferred`, then `profile`, each with `outcome` and a `reason`
   that is `null` only for `pass`. The inferred lane fails without a lock, with

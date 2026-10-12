@@ -132,7 +132,9 @@ func buildCalibration(
 	positioner := backtest.NewPositioner(events)
 	var transactions []backtest.Transaction
 	diagnostics, err := repository.EachTransaction(ctx, events, func(transaction gitlog.Transaction) error {
-		observed.transaction(transaction)
+		if err := observed.transaction(transaction); err != nil {
+			return err
+		}
 		positioned, err := positioner.Position(transaction)
 		if err != nil {
 			return err

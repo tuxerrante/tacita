@@ -48,7 +48,10 @@ both orderings, and the controls under the 20-minute elapsed budget; the
 evaluation checks the deadline before every cutoff's displays and every
 configuration's evaluation. After the chain is known, a failure with a frozen
 failure code writes a `failed` report carrying it; an earlier failure, or one
-the frozen vocabulary does not name, writes no report and exits `1`. Budget observations count the run's own work. Git
+the frozen vocabulary does not name, writes no report and exits `1`. The
+command's own budget observations enforce the frozen pair-observation and
+distinct-pair budgets as transactions arrive, so its pair set cannot outgrow
+them before the miner sees the history. Budget observations count the run's own work. Git
 output budgets are enforced by stopping the child and are recorded unobserved.
 
 `tacita select` reads two runs' reports for each corpus repository, in corpus

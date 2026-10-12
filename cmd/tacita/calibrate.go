@@ -83,22 +83,33 @@ func calibrate(ctx context.Context, path string, revision string, lookup corpusL
 
 	built, err := buildCalibration(ctx, repository, events, commit, role, tool, record)
 	if err != nil {
-		failure, ok := failureFor(err)
-		if !ok {
-			return nil, err
-		}
-		failed := report.Report{
-			Schema:     report.ReportSchema,
-			Kind:       "calibration",
-			Status:     "failed",
-			Tool:       tool,
-			Repository: record,
-			Failure:    &failure,
-		}
-		return report.Encode(failed)
+		return failedReport(err, tool, record)
+	}
+	encoded, err := report.Encode(built)
+	if err != nil {
+		return failedReport(err, tool, record)
 	}
 
-	return report.Encode(built)
+	return encoded, nil
+}
+
+// failedReport encodes the failed report of a run whose chain is known, or
+// returns err when the frozen vocabulary does not name the failure. A complete
+// report over the row or byte budget becomes a failed report here too.
+func failedReport(err error, tool report.Tool, record report.Repository) ([]byte, error) {
+	failure, ok := failureFor(err)
+	if !ok {
+		return nil, err
+	}
+
+	return report.Encode(report.Report{
+		Schema:     report.ReportSchema,
+		Kind:       "calibration",
+		Status:     "failed",
+		Tool:       tool,
+		Repository: record,
+		Failure:    &failure,
+	})
 }
 
 // buildCalibration runs ingestion, both orderings, and the controls, and

@@ -209,3 +209,28 @@ func TestFailureFor(t *testing.T) {
 		t.Error("failureFor() named an unclassified error")
 	}
 }
+
+func TestFailedReportCoversBudgetsAndUnnamedFailures(t *testing.T) {
+	tool := report.Tool{TacitaVersion: "test", TacitaBinarySHA256: strings.Repeat("a", 64), GitVersion: "2.55.0"}
+	record := report.Repository{
+		ObjectFormat: "sha1", RootCommit: strings.Repeat("1", 40), ResolvedCommit: strings.Repeat("2", 40),
+		ReachableCommits: 2, FirstParentEvents: 2, SingleParentEvents: 1,
+	}
+
+	encoded, err := failedReport(&report.LimitError{Code: "budget_report_rows", Observed: 100_001, Limit: 100_000}, tool, record)
+	if err != nil {
+		t.Fatalf("failedReport(row limit) error = %v", err)
+	}
+	decoded, err := report.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if decoded.Status != "failed" || decoded.Failure.Code != "budget_report_rows" || *decoded.Failure.Observed != 100_001 {
+		t.Errorf("failed report = %s %+v", decoded.Status, decoded.Failure)
+	}
+
+	unnamed := errors.New("unexpected")
+	if encoded, err := failedReport(unnamed, tool, record); !errors.Is(err, unnamed) || encoded != nil {
+		t.Errorf("failedReport(unnamed) = %d bytes, %v; want the error and no report", len(encoded), err)
+	}
+}

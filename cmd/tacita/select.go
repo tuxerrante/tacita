@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -26,11 +27,13 @@ func (l *repositoryList) String() string {
 }
 
 func (l *repositoryList) Set(value string) error {
-	if value != report.GolangTools().Name && value != report.Kubernetes().Name {
-		return fmt.Errorf("%q is not a development repository", value)
+	for _, repository := range report.CalibrationCorpus() {
+		if value == repository.Name {
+			*l = append(*l, value)
+			return nil
+		}
 	}
-	*l = append(*l, value)
-	return nil
+	return fmt.Errorf("%q is not a calibration corpus repository", value)
 }
 
 func runSelect(ctx context.Context, args []string, stdout io.Writer) error {
@@ -38,12 +41,12 @@ func runSelect(ctx context.Context, args []string, stdout io.Writer) error {
 	flags := newFlagSet("select", selectUsage, &flagOutput)
 	var operationalFailures repositoryList
 	flags.Var(&operationalFailures, "operational-failure",
-		"development repository whose run the harness reports over its elapsed-time or memory budget")
+		"corpus repository whose run the harness reports as failed or over its elapsed-time or memory budget")
 	if handled, err := parseFlags(flags, &flagOutput, args, stdout); handled {
 		return err
 	}
-	if flags.NArg() != 6 {
-		return &usageError{detail: selectUsage, cause: errors.New("expected six report paths")}
+	if flags.NArg() != 8 {
+		return &usageError{detail: selectUsage, cause: errors.New("expected eight report paths")}
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("starting selection: %w", err)
@@ -56,16 +59,28 @@ func runSelect(ctx context.Context, args []string, stdout io.Writer) error {
 			return err
 		}
 		reports[index] = data
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("reading reports: %w", err)
+		}
 	}
 
+	runs := make([]report.RepositoryRun, len(report.CalibrationCorpus()))
+	for index, repository := range report.CalibrationCorpus() {
+		runs[index] = report.RepositoryRun{
+			Report:          reports[2*index],
+			Repeat:          reports[2*index+1],
+			OperationalPass: !slices.Contains(operationalFailures, repository.Name),
+		}
+	}
 	selection, err := report.Select(report.SelectionInput{
-		Development: [2]report.DevelopmentRun{
-			{Report: reports[0], Repeat: reports[1], OperationalPass: !slices.Contains(operationalFailures, report.GolangTools().Name)},
-			{Report: reports[2], Repeat: reports[3], OperationalPass: !slices.Contains(operationalFailures, report.Kubernetes().Name)},
-		},
-		Controls: [2][]byte{reports[4], reports[5]},
+		Development: [2]report.RepositoryRun{runs[0], runs[1]},
+		Controls:    [2]report.RepositoryRun{runs[2], runs[3]},
+		Platform:    runtime.GOOS + "/" + runtime.GOARCH,
 	})
 	if err != nil {
+		return fmt.Errorf("selecting the development configuration: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("selecting the development configuration: %w", err)
 	}
 

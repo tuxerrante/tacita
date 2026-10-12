@@ -32,7 +32,7 @@ func TestRunUsage(t *testing.T) {
 		{name: "calibrate without repository", args: []string{"calibrate", "--revision", "HEAD"}, wantUsage: true},
 		{name: "calibrate with two repositories", args: []string{"calibrate", "--revision", "HEAD", ".", "."}, wantUsage: true},
 		{name: "calibrate unknown flag", args: []string{"calibrate", "--unknown"}, wantUsage: true},
-		{name: "select with five reports", args: []string{"select", "a", "b", "c", "d", "e"}, wantUsage: true},
+		{name: "select with seven reports", args: []string{"select", "a", "b", "c", "d", "e", "f", "g"}, wantUsage: true},
 		{name: "select unknown repository", args: []string{"select", "--operational-failure", "tuxerrante/kapparmor"}, wantUsage: true},
 	}
 
@@ -71,7 +71,7 @@ func TestRunCanceled(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"calibrate", "--revision", "HEAD", "."},
-		{"select", "a", "b", "c", "d", "e", "f"},
+		{"select", "a", "b", "c", "d", "e", "f", "g", "h"},
 	} {
 		if err := run(ctx, args, io.Discard); !errors.Is(err, context.Canceled) {
 			t.Errorf("run(%q) error = %v, want context.Canceled", args, err)
@@ -94,7 +94,7 @@ func TestRealMainExitCodes(t *testing.T) {
 	}
 
 	missing := filepath.Join(t.TempDir(), "missing.json")
-	args := []string{"select", missing, missing, missing, missing, missing, missing}
+	args := []string{"select", missing, missing, missing, missing, missing, missing, missing, missing}
 	if code := realMain(args, &stdout, io.Discard); code != 1 {
 		t.Errorf("realMain(missing reports) = %d, want 1", code)
 	}
@@ -140,7 +140,7 @@ func TestReadReportEnforcesTheByteBudget(t *testing.T) {
 func TestSelectRejectsMalformedReports(t *testing.T) {
 	dir := t.TempDir()
 	var args []string
-	for _, name := range []string{"a", "b", "c", "d", "e", "f"} {
+	for _, name := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
 			t.Fatal(err)

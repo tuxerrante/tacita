@@ -103,9 +103,10 @@ Not implemented:
 - proposal, ratification, manifests, or checking.
 
 The current CLI is the experiment's calibration surface. Its shape may change
-when the first product command contract is frozen. The implemented Git boundary is likewise provisional and
-still under review; each review pass so far has found and fixed a defect,
-recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
+when the first product command contract is frozen. The implemented Git boundary
+is likewise provisional and still under review; each review pass so far has
+found and fixed a defect, recorded in
+[`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
 ## 📊 Frozen Milestone 0 decisions
 

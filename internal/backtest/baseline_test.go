@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -156,7 +157,7 @@ func TestEvaluateOrderingComposesFoldDisplayAndEvaluate(t *testing.T) {
 	}
 	configurations := mining.AllConfigurations()
 
-	outcomes, err := EvaluateOrdering(transactions, partitions, configurations)
+	outcomes, err := EvaluateOrdering(t.Context(), transactions, partitions, configurations)
 	if err != nil {
 		t.Fatalf("EvaluateOrdering() error = %v", err)
 	}
@@ -207,11 +208,11 @@ func TestEvaluateOrderingPropagatesFailures(t *testing.T) {
 		t.Fatalf("Partitions() error = %v", err)
 	}
 	invalid := []mining.Configuration{{SizeWeight: "none"}}
-	if _, err := EvaluateOrdering(correlatedTransactions(600), partitions, invalid); !errors.Is(err, mining.ErrInvalidConfiguration) {
+	if _, err := EvaluateOrdering(t.Context(), correlatedTransactions(600), partitions, invalid); !errors.Is(err, mining.ErrInvalidConfiguration) {
 		t.Errorf("EvaluateOrdering(invalid configuration) error = %v", err)
 	}
 	unordered := []Transaction{{Position: 3, Components: []string{"a"}}, {Position: 2, Components: []string{"b"}}}
-	if _, err := EvaluateOrdering(unordered, partitions, mining.AllConfigurations()); !errors.Is(err, ErrTransactionOrder) {
+	if _, err := EvaluateOrdering(t.Context(), unordered, partitions, mining.AllConfigurations()); !errors.Is(err, ErrTransactionOrder) {
 		t.Errorf("EvaluateOrdering(unordered) error = %v", err)
 	}
 }
@@ -245,5 +246,20 @@ func TestNoHistoryControlEmitsNoCandidate(t *testing.T) {
 
 	if _, err := NoHistoryCandidates([]mining.Configuration{{SizeWeight: "none"}}); !errors.Is(err, mining.ErrInvalidConfiguration) {
 		t.Errorf("NoHistoryCandidates(invalid) error = %v", err)
+	}
+}
+
+func TestEvaluateOrderingStopsWhenCancelled(t *testing.T) {
+	partitions, err := Partitions(600)
+	if err != nil {
+		t.Fatalf("Partitions() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = EvaluateOrdering(ctx, correlatedTransactions(600), partitions, mining.AllConfigurations())
+
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("EvaluateOrdering(cancelled) error = %v, want context.Canceled", err)
 	}
 }

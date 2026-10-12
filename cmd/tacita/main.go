@@ -19,7 +19,7 @@ const (
 	calibrateUsage = "usage: tacita calibrate --revision <revision> <repository>"
 	selectUsage    = "usage: tacita select [--operational-failure <repository>]... " +
 		"<golang/tools report> <golang/tools repeat> <kubernetes report> <kubernetes repeat> " +
-		"<go-starter report> <proficiency report>"
+		"<go-starter report> <go-starter repeat> <proficiency report> <proficiency repeat>"
 
 	// exitNoSelection reports a completed selection that wrote no lock because
 	// the development lane failed.

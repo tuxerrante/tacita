@@ -20,8 +20,10 @@ identity budgets. Milestone 2 descriptive mining is implemented: an internal
 boundary accumulates directional pair state from component transactions and
 derives ranked candidate metrics, supporting any of the 81 frozen grid
 configurations. See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the
-exact status. The current binary remains only a testable CLI shell; it does not
-analyze Git history or enforce policy. There are no releases yet.
+exact status. Milestone 3 temporal calibration is implemented: the binary
+calibrates the frozen development and control repositories and selects the
+development configuration, and it refuses every other commit. It does not
+enforce policy. There are no releases yet.
 
 ## 🧭 Start here
 
@@ -66,12 +68,13 @@ dependencies. A pull request whose changed files are all Markdown uses
 check and linter.
 
 Calibrate one frozen development or control repository on Linux/amd64, then
-select the development configuration from the six reports:
+select the development configuration from both runs of each repository:
 
 ```bash
 tacita calibrate --revision <frozen-commit> <repository> > report.json
 tacita select tools.json tools.repeat.json kubernetes.json \
-  kubernetes.repeat.json go-starter.json proficiency.json > lock.json
+  kubernetes.repeat.json go-starter.json go-starter.repeat.json \
+  proficiency.json proficiency.repeat.json > lock.json
 ```
 
 ## 🤝 Contributing

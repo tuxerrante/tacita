@@ -43,9 +43,11 @@ type corpusLookup func(commit string) (report.CorpusRepository, bool)
 var errNotCalibrationCorpus = errors.New("commit is not in the frozen calibration corpus")
 
 // calibrate produces the canonical calibration report of one repository
-// revision. A run that fails after the chain is known produces a failed
-// report carrying the frozen failure code; a run that fails earlier returns
-// only the error, because a report must name the analyzed commits.
+// revision. The reachable count and the first-parent chain are read first,
+// because a report must name both. After that, a failure the frozen
+// vocabulary names produces a failed report carrying its failure code; an
+// earlier failure, or one the vocabulary does not name, returns only the
+// error and writes no report.
 func calibrate(ctx context.Context, path string, revision string, lookup corpusLookup) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, elapsedBudget)
 	defer cancel()
@@ -68,15 +70,16 @@ func calibrate(ctx context.Context, path string, revision string, lookup corpusL
 	}
 	tool.GitVersion = repository.GitVersion()
 
+	reachable, err := repository.ReachableCommits(ctx, commit)
+	if err != nil {
+		return nil, fmt.Errorf("counting reachable commits: %w", err)
+	}
 	events, err := repository.FirstParentEvents(ctx, commit)
 	if err != nil {
 		return nil, fmt.Errorf("listing integration events: %w", err)
 	}
 	record := repositoryRecord(events)
-	record.ReachableCommits, err = repository.ReachableCommits(ctx, commit)
-	if err != nil {
-		return nil, fmt.Errorf("counting reachable commits: %w", err)
-	}
+	record.ReachableCommits = reachable
 
 	built, err := buildCalibration(ctx, repository, events, commit, role, tool, record)
 	if err != nil {
@@ -131,7 +134,7 @@ func buildCalibration(
 	}
 
 	configurations := mining.AllConfigurations()
-	chronological, err := backtest.EvaluateOrdering(transactions, partitions, configurations)
+	chronological, err := backtest.EvaluateOrdering(ctx, transactions, partitions, configurations)
 	if err != nil {
 		return report.Report{}, fmt.Errorf("evaluating chronological order: %w", err)
 	}
@@ -144,7 +147,7 @@ func buildCalibration(
 	if err != nil {
 		return report.Report{}, err
 	}
-	shuffled, err := backtest.EvaluateOrdering(shuffledTransactions, partitions, configurations)
+	shuffled, err := backtest.EvaluateOrdering(ctx, shuffledTransactions, partitions, configurations)
 	if err != nil {
 		return report.Report{}, fmt.Errorf("evaluating hash-shuffled order: %w", err)
 	}

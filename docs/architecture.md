@@ -42,16 +42,19 @@ main -> realMain -> run -> runSelect -> report.Select
 `tacita calibrate --revision <revision> <repository>` writes one canonical
 calibration report to stdout. It resolves the revision and refuses any commit
 outside the frozen development and control corpus, so the configuration
-holdout cannot be calibrated. It runs ingestion, both orderings, and the
-controls under the 20-minute elapsed budget. A run that fails after the chain
-is known writes a `failed` report carrying the frozen failure code; an earlier
-failure writes no report. Budget observations count the run's own work. Git
+holdout cannot be calibrated. It counts reachable commits and reads the
+first-parent chain first, because a report names both, then runs ingestion,
+both orderings, and the controls under the 20-minute elapsed budget; the
+evaluation checks the deadline before every cutoff's displays and every
+configuration's evaluation. After the chain is known, a failure with a frozen
+failure code writes a `failed` report carrying it; an earlier failure, or one
+the frozen vocabulary does not name, writes no report and exits `1`. Budget observations count the run's own work. Git
 output budgets are enforced by stopping the child and are recorded unobserved.
 
-`tacita select` reads the `golang/tools` and Kubernetes reports and their
-repeats, then the `go-starter` and Proficiency reports, each within the report
-byte budget. `--operational-failure <repository>` records a development run the
-harness reports over its elapsed-time or memory budget. It writes the canonical
+`tacita select` reads two runs' reports for each corpus repository, in corpus
+order, each within the report byte budget, and selects only on `linux/amd64`.
+`--operational-failure <repository>` records a repository whose run the harness
+reports as failed or over its elapsed-time or memory budget. It writes the canonical
 lock, or a sorted summary of lane failures and rejections and exits `3`.
 
 These commands are the experiment's calibration surface, not the product's

@@ -83,13 +83,16 @@ Implemented:
 - canonical `tacita.report/v1` calibration reports and the `tacita.grid/v1`
   artifact, with validation, strict canonical decoding, and the report row and
   byte budgets;
+- `development-selector-v1` over the frozen development and control reports,
+  with lane failures for non-deterministic, over-budget, incomplete, or
+  control-failing runs, and the canonical `tacita.dev-lock/v1` writer;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- the development selector and configuration lock;
+- the calibration command and reference-environment harness;
 - profile evaluation;
 - text rendering;
 - proposal, ratification, manifests, or checking.

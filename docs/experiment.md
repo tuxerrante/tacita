@@ -362,6 +362,77 @@ fails without running Tacita on the configuration holdout. Changing the grid or
 selector requires a new preregistered experiment; the original run cannot call
 later evidence its configuration holdout.
 
+## 📊 Development calibration result
+
+The development lane was run as frozen on 2026-10-12. Fixes to the harness and
+to evidence validation required reruns; every rerun produced the same reports
+apart from the `tacita` binary digest, and the figures below are from the
+recorded run of 2026-10-13. The inferred lane **fails**: no configuration is selectable, so no configuration lock exists and
+Tacita was not run on the configuration holdout. No Kapparmor candidate, rank,
+metric, or label was produced, and the holdout remains unseen.
+
+The run used `make reference-run` from source commit
+`157be9d108177869a00542a2a6bb793c3c4d4066` in the reference image (Go 1.27.0,
+Git 2.55.0). It ran in a linux/amd64 container with 4 CPUs, 8 GiB, and no
+network, emulated on Apple silicon rather than on a native runner. The static
+`tacita` binary's SHA-256 was
+`2c12a7ecbd53dc866ab6d7439172180ae83f865c3ae399e690f29e8f6c458634`. Both runs of
+every corpus repository produced byte-identical reports:
+
+| Repository | Report SHA-256 | First-parent events | Reachable commits |
+| --- | --- | ---: | ---: |
+| `golang/tools` | `66a782200d144ff88ae34718e5fe171f191cd7dc79a49948abc5462108486016` | 10,693 | 10,693 |
+| `kubernetes/kubernetes` | `b052779e296a6cee8a9e2ce0aad38babb1043313929ad1ead8ae7d0e4cc455c5` | 58,699 | 140,375 |
+| `allaboutapps/go-starter` | `a40325acfca515922dedf73255a0cf9d6822793e530d7edaad1ec7c64192eb05` | 428 | 1,062 |
+| `tuxerrante/proficiency` | `ae940359aa50af4d9aa40c3e585bf97867960f302bf67033e4b690611e85ace7` | 46 | 51 |
+
+The evidence index digest is
+`aa25a155840edc05ef859ab17e1aaaa8a408072177a23e458f5f2187ca1b7ea1`.
+
+Development gates passed, out of 81 configurations on each repository:
+
+| Gate | `golang/tools` | Kubernetes |
+| --- | ---: | ---: |
+| `cutoff_display` | 81 | 81 |
+| `coverage` | 0 | 0 |
+| `evaluation_windows_covered` | 72 | 27 |
+| `frequent_consequent_gain` | 81 | 27 |
+| `shuffled_control_gain` | 0 | 0 |
+| `adjacent_jaccard` | 57 | 27 |
+| `unweighted_gain`, of 54 non-`unit` | 42 | 0 |
+| Every gate | 0 | 0 |
+
+Two requirements never pass on any configuration of either repository:
+
+- `coverage` fails all 162 configuration cells: the greatest pooled coverage is
+  0.045359 on `golang/tools` and 0.004445 on Kubernetes, against 0.05. Ten
+  displayed rules ranked by confidence first cannot cover 5% of evaluation
+  transactions in a repository with 9,505 components;
+- `shuffled_control_gain` fails 108 cells and is `inconclusive` in the other
+  54. Wherever the comparison is defined, the hash-shuffled order matches or
+  beats the chronological order. A random split trains and evaluates on one
+  distribution, so it removes drift, while chronological evaluation with
+  expanding windows and no decay meets dead directories in later windows.
+
+The 54 `inconclusive` cells are Kubernetes configurations that display only
+rules whose antecedents never recur in any evaluation window, so their
+comparison gates report `no_opportunities`; each of them fails `coverage`.
+
+The no-history control, the `go-starter` template-origin control (root event
+excluded), and the Proficiency young-repository control (zero inferred
+candidates) pass. Every run stayed within its operational budgets:
+Kubernetes took 32 and 31 seconds and peaked at 979 MB, the resident set of
+its largest Git subprocess; Tacita's own process, measured alone, peaked at
+about 0.51 GB. `golang/tools` peaked at 95 MB in
+about 2 seconds. Kubernetes used 1,254,836 of the 2,000,000
+distinct-pair budget.
+
+Under the rules above, the original run cannot change its grid, selector, or
+thresholds, and cannot call later evidence its configuration holdout. The
+next step is the Milestone 5 decision: preregister and rerun a revised
+inferred lane, run the Milestone 4 profile lane first to inform that choice,
+or stop or split the product.
+
 ## Frozen product-relevance gate
 
 The following protocol and thresholds were frozen on 2026-08-16 before Tacita

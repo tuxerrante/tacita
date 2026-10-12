@@ -22,6 +22,8 @@ const (
 	baselineNoHistory      = "no_history"
 	baselineUnweighted     = "unweighted"
 	codeReportBytes        = "budget_report_bytes"
+	controlYoungRepository = "young_repository"
+	controlTemplateOrigin  = "template_origin"
 )
 
 // Frozen enumerations. A value outside them is an encoding and decoding error.
@@ -33,7 +35,7 @@ var (
 	eventKinds   = []string{"merge-result", "root", "single-parent"}
 	pathStatuses = []string{"A", "D", "M", "T"}
 	baselineIDs  = []string{"frequent_consequent", "hash_shuffled", "no_history", "unweighted"}
-	controlIDs   = []string{"template_origin", "young_repository"}
+	controlIDs   = []string{controlTemplateOrigin, controlYoungRepository}
 
 	gateIDs = []string{
 		"adjacent_jaccard",

@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"errors"
 	"math"
 	"slices"
@@ -376,6 +377,8 @@ func TestSelectRequiresRepositoryGatesToPass(t *testing.T) {
 	noHistory := slices.IndexFunc(report.Gates, func(g Gate) bool { return g.ID == "no_history_control" })
 	report.Gates[noHistory].Outcome = outcomeFail
 	report.Gates[noHistory].Metric = decimalMetric(3)
+	failed := outcomeFail
+	report.Baselines[0].Outcome = &failed
 	encoded, err := Encode(report)
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
@@ -688,4 +691,106 @@ func TestSelectRejectsGainsTheRecordsDoNotSupport(t *testing.T) {
 			t.Errorf("%s: Select() error = %v, want ErrEncode", name, err)
 		}
 	}
+}
+
+func TestSelectChecksControlMeasurements(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	tests := []struct {
+		name   string
+		index  int
+		mutate func(*Report)
+	}{
+		{name: "a young repository with candidates", index: 1, mutate: func(r *Report) { r.Controls[0].InferredCandidates = 1 }},
+		{name: "a template without its root excluded", index: 0, mutate: func(r *Report) { r.Controls[0].RootEventExcluded = false }},
+	}
+	for _, tt := range tests {
+		input := selectionInput(t, passing, passing)
+		input.Controls[tt.index] = controlRun(reencoded(t, input.Controls[tt.index].Report, tt.mutate))
+		selection, err := Select(input)
+		if err != nil {
+			t.Fatalf("%s: Select() error = %v", tt.name, err)
+		}
+		want := LaneFailure{Repository: []CorpusRepository{GoStarter(), Proficiency()}[tt.index].Commit, Reason: LaneControlFailed}
+		if selection.Lock != nil || !slices.Contains(selection.LaneFailures, want) {
+			t.Errorf("%s: lock %v, lane failures %+v", tt.name, selection.Lock != nil, selection.LaneFailures)
+		}
+	}
+}
+
+func TestSelectRequiresTheNoHistoryRecordsToAgree(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	input := selectionInput(t, passing, passing)
+	input.Development[0].Report = reencoded(t, input.Development[0].Report, func(r *Report) {
+		failed := outcomeFail
+		r.Baselines[0].Outcome = &failed
+	})
+	input.Development[0].Repeat = input.Development[0].Report
+
+	if _, err := Select(input); !errors.Is(err, ErrEncode) {
+		t.Errorf("Select(disagreeing no-history records) error = %v, want ErrEncode", err)
+	}
+}
+
+// FuzzDecodeLock asserts that DecodeLock never panics and that every accepted
+// lock re-encodes to exactly the bytes that were decoded.
+func FuzzDecodeLock(f *testing.F) {
+	lock := Lock{LockFields: LockFields{
+		Schema: LockSchema,
+		Corpus: []string{GolangTools().Commit, Kubernetes().Commit, GoStarter().Commit, Proficiency().Commit},
+		Environment: Environment{
+			Architecture: lockArchitecture, GitVersion: FrozenGitVersion, TacitaBinarySHA256: strings.Repeat("a", 64),
+		},
+		Selector:        SelectorVersion,
+		ConfigurationID: unitLoose,
+		Parameters:      Parameters{SizeWeight: weightUnit, MinimumOpportunities: 5, MinimumConfidence: 0.70, MinimumLift: 1.25},
+		DevelopmentReports: []ReportDigest{
+			{RepositoryObjectID: GolangTools().Commit, ReportDigest: strings.Repeat("b", 64)},
+			{RepositoryObjectID: Kubernetes().Commit, ReportDigest: strings.Repeat("c", 64)},
+		},
+		SelectorMetrics: []SelectorMetric{
+			{Metric: MetricWorstCaseFrequentConsequentGain, Value: 0.3},
+			{Metric: MetricWorstCaseCoverage, Value: 0.1},
+			{Metric: MetricMinimumAdjacentJaccard, Value: 0.6},
+		},
+	}}
+	grid, err := FrozenGrid()
+	if err != nil {
+		f.Fatal(err)
+	}
+	lock.GridDigest = grid.GridDigest
+	sealed, err := NewLock(lock.LockFields)
+	if err != nil {
+		f.Fatal(err)
+	}
+	encoded, err := EncodeLock(sealed)
+	if err != nil {
+		f.Fatal(err)
+	}
+	text := string(encoded)
+	for _, seed := range []string{
+		text,
+		strings.Replace(text, `"minimum_opportunities":5`, `"minimum_opportunities":10`, 1),
+		strings.Replace(text, `,"corpus"`, `, "corpus"`, 1),
+		strings.Replace(text, `"corpus"`, `"holdout":1,"corpus"`, 1),
+		strings.Replace(text, FrozenGitVersion, "2.47.3", 1),
+		strings.Replace(text, `"lock_digest":"`, `"lock_digest":"0`, 1),
+		strings.TrimSuffix(text, "\n"),
+		"",
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		decoded, err := DecodeLock(data)
+		if err != nil {
+			return
+		}
+		again, err := EncodeLock(decoded)
+		if err != nil {
+			t.Fatalf("EncodeLock(decoded) error = %v", err)
+		}
+		if !bytes.Equal(again, data) {
+			t.Fatalf("accepted lock is not canonical:\n%q\n%q", data, again)
+		}
+	})
 }

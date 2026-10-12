@@ -758,7 +758,8 @@ ratified here as the behavior the implementation pins:
    or over its elapsed-time or peak-memory budget, a development report that
    is not `complete`, and a `go-starter` or Proficiency report without exactly
    its role's control record (`template_origin` or `young_repository`)
-   passing;
+   passing with the measurement it requires: the root event excluded, or zero
+   inferred candidates;
 2. a repository-level gate that does not pass, such as the no-history control,
    makes every configuration unselectable;
 3. a configuration is selectable only if every one of its gates passes on both
@@ -768,7 +769,8 @@ Before ranking, the selector recomputes every configuration's
 frequent-consequent, shuffled-control, and unweighted gains from the report's
 model and baseline records and rejects any gate that disagrees by more than the
 two-millionths that six-digit rounding allows, so a gate cannot claim a gain
-its recorded metrics do not support. Selection runs only on `linux/amd64`, the
+its recorded metrics do not support. It also requires the `no_history`
+baseline and the `no_history_control` gate to record the same outcome. Selection runs only on `linux/amd64`, the
 platform the reports are produced on, so the lock's architecture is observed
 rather than assumed. The selector keys are the passing gates' own metrics, the decimal values the
 reports record, so values within the six-digit precision tie and fall through

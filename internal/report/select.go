@@ -155,6 +155,9 @@ func Select(input SelectionInput) (Selection, error) {
 		if err := checkGains(report); err != nil {
 			return Selection{}, err
 		}
+		if err := checkNoHistory(report); err != nil {
+			return Selection{}, err
+		}
 	}
 	candidates, rejections, err := selectableConfigurations(development)
 	if err != nil {
@@ -224,16 +227,25 @@ func decodeRole(data []byte, repository CorpusRepository) (Report, error) {
 // controlIDFor names the control a control repository's role requires.
 func controlIDFor(role CorpusRepository) string {
 	if role.Role == RoleTemplateControl {
-		return "template_origin"
+		return controlTemplateOrigin
 	}
-	return "young_repository"
+	return controlYoungRepository
 }
 
 // controlPasses requires a complete report holding exactly the control its
-// role requires, and that control passing.
+// role requires, passing, with the measurement the frozen control needs: zero
+// inferred candidates for the young repository and an excluded root event for
+// the template.
 func controlPasses(report Report, id string) bool {
-	return report.Status == statusComplete && len(report.Controls) == 1 &&
-		report.Controls[0].ID == id && report.Controls[0].Outcome == outcomePass
+	if report.Status != statusComplete || len(report.Controls) != 1 {
+		return false
+	}
+	control := report.Controls[0]
+	measured := control.RootEventExcluded
+	if id == controlYoungRepository {
+		measured = control.InferredCandidates == 0
+	}
+	return control.ID == id && control.Outcome == outcomePass && measured
 }
 
 // sharedEnvironment requires every report to come from the same Tacita
@@ -440,4 +452,27 @@ func recomputedGain(model MetricRecord, baseline [2]Metric) (float64, bool) {
 	}
 
 	return math.Min(float64(*values[0]-*values[2]), float64(*values[1]-*values[3])), true
+}
+
+// checkNoHistory requires the no_history baseline and the no_history_control
+// gate to record the same outcome, so the gate cannot pass a control its
+// baseline records as failing.
+func checkNoHistory(report Report) error {
+	var baseline, gate string
+	for _, record := range report.Baselines {
+		if record.ID == baselineNoHistory && record.Outcome != nil {
+			baseline = *record.Outcome
+		}
+	}
+	for _, record := range report.Gates {
+		if record.ID == gateNoHistory {
+			gate = record.Outcome
+		}
+	}
+	if baseline != gate {
+		return invalid("report %s no_history baseline %q disagrees with its gate %q",
+			report.Repository.ResolvedCommit, baseline, gate)
+	}
+
+	return nil
 }

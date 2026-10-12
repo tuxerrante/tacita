@@ -663,6 +663,23 @@ is the "frozen repository object ID", and whether excluded events take part in
 the shuffled order. Both are ratified here and are the behavior the
 implementation pins.
 
+Each configuration's development gates are decided independently on one
+repository and combined conjunctively, as the frozen outcome semantics
+require. The frozen text names the outcomes but not every mapping from an
+undefined metric, so these are ratified here and are the behavior the
+implementation pins:
+
+1. a gate whose metric is undefined is `inconclusive` with the metric's
+   reason, because the partition did not provide the evidence to compute it;
+2. a cutoff above the inference floor that displays nothing, or the window
+   after it covering nothing, is a `fail` even when another cutoff is below the
+   floor, because valid contrary evidence outranks missing evidence;
+3. a window after a cutoff below the floor reports `below_inference_floor`,
+   and a window without eligible transactions reports
+   `no_eligible_evaluation_events`.
+
+Comparisons use unrounded finite values, as the report contract requires.
+
 This strategy depends on the frozen no-decay decision. If a later experiment
 introduces temporal decay, retained weights change as the cutoff advances, the
 running-total fold is no longer valid, and this section must be revisited

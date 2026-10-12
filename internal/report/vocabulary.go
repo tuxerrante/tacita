@@ -137,7 +137,8 @@ type BudgetSpec struct {
 	Limit int64
 	// Unobserved budgets carry a null canonical observation and outcome:
 	// runtime, memory, and sidecar size are observed by the experiment
-	// harness, and a report cannot contain its own byte size. The encoder still
+	// harness, Git output is enforced by stopping the child rather than
+	// counted, and a report cannot contain its own byte size. The encoder still
 	// enforces the report byte budget.
 	Unobserved bool
 }
@@ -166,8 +167,8 @@ var budgetSpecs = []BudgetSpec{
 	{ID: "event_components", Unit: unitComponents, Limit: 100},
 	{ID: "event_paths", Unit: unitPaths, Limit: 2_000},
 	{ID: "first_parent_events", Unit: "events", Limit: 200_000},
-	{ID: "git_stderr", Unit: unitBytes, Limit: 1 << 20},
-	{ID: "git_stdout", Unit: unitBytes, Limit: 1 << 30},
+	{ID: "git_stderr", Unit: unitBytes, Limit: 1 << 20, Unobserved: true},
+	{ID: "git_stdout", Unit: unitBytes, Limit: 1 << 30, Unobserved: true},
 	{ID: "operational_sidecar_bytes", Unit: unitBytes, Limit: 1 << 20, Unobserved: true},
 	{ID: "pair_observations", Unit: unitPairs, Limit: 20_000_000},
 	{ID: "peak_resident_memory", Unit: unitBytes, Limit: 2 << 30, Unobserved: true},

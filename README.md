@@ -65,10 +65,13 @@ dependencies. A pull request whose changed files are all Markdown uses
 `make markdown-gate` instead, which runs only the pinned Markdown formatter
 check and linter.
 
-Run the current shell:
+Calibrate one frozen development or control repository on Linux/amd64, then
+select the development configuration from the six reports:
 
 ```bash
-go run ./cmd/tacita backtest --revision HEAD .
+tacita calibrate --revision <frozen-commit> <repository> > report.json
+tacita select tools.json tools.repeat.json kubernetes.json \
+  kubernetes.repeat.json go-starter.json proficiency.json > lock.json
 ```
 
 ## 🤝 Contributing

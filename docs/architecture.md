@@ -21,21 +21,41 @@ resource, report, security, and testing contracts. See the
 
 ## Current CLI
 
-The implemented call path is:
+The implemented call paths are:
 
 ```text
-main -> realMain -> run -> runBacktest
+main -> realMain -> run -> runCalibrate -> calibrate
+main -> realMain -> run -> runSelect -> report.Select
 ```
 
 - `main` only passes process arguments and streams to `realMain`, then calls
   `os.Exit`.
-- `realMain` owns signal cancellation, error rendering, and exit-code mapping.
-- `run` and `runBacktest` accept injected `io.Writer` values and return errors.
-- a dedicated `flag.FlagSet` captures help and parse output so the CLI boundary
-  controls where each message is written;
+- `realMain` owns signal cancellation, error rendering, and exit-code mapping:
+  `0` for success, `1` for an operational failure, `2` for usage, and `3` for a
+  selection that wrote no lock because the development lane fails.
+- `run`, `runCalibrate`, and `runSelect` accept injected `io.Writer` values and
+  return errors.
+- a dedicated `flag.FlagSet` per command captures help and parse output so the
+  CLI boundary controls where each message is written;
 - `usageError` preserves its cause for `errors.Is` and `errors.As`.
 
-The `backtest` shell is scaffolding, not a stable public command contract.
+`tacita calibrate --revision <revision> <repository>` writes one canonical
+calibration report to stdout. It resolves the revision and refuses any commit
+outside the frozen development and control corpus, so the configuration
+holdout cannot be calibrated. It runs ingestion, both orderings, and the
+controls under the 20-minute elapsed budget. A run that fails after the chain
+is known writes a `failed` report carrying the frozen failure code; an earlier
+failure writes no report. Budget observations count the run's own work. Git
+output budgets are enforced by stopping the child and are recorded unobserved.
+
+`tacita select` reads the `golang/tools` and Kubernetes reports and their
+repeats, then the `go-starter` and Proficiency reports, each within the report
+byte budget. `--operational-failure <repository>` records a development run the
+harness reports over its elapsed-time or memory budget. It writes the canonical
+lock, or a sorted summary of lane failures and rejections and exits `3`.
+
+These commands are the experiment's calibration surface, not the product's
+command contract.
 
 The [product brief](product.md#product-loop) owns the future workflow,
 ratification semantics, and enforcement policy. If the experiment succeeds,

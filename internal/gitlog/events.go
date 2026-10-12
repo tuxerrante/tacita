@@ -130,21 +130,28 @@ func (r *Repository) classifyFirstParentFailure(
 	commit ObjectID,
 	traversalErr error,
 ) error {
+	return r.classifyTraversalFailure(ctx, commit, traversalErr, "first-parent history", "--first-parent")
+}
+
+// classifyTraversalFailure reruns a failed walk, restricted by walkArgs, as a
+// bounded --missing=print diagnostic and reports ErrIncompleteRepository only
+// when every reported object is confirmed missing. Any other result preserves
+// the original failure.
+func (r *Repository) classifyTraversalFailure(
+	ctx context.Context,
+	commit ObjectID,
+	traversalErr error,
+	scope string,
+	walkArgs ...string,
+) error {
 	var gitErr *GitError
 	if !errors.As(traversalErr, &gitErr) {
 		return traversalErr
 	}
 
-	output, err := r.runScalar(
-		ctx,
-		"checking first-parent completeness",
-		maxScalarOutput,
-		"rev-list",
-		"--quiet",
-		"--first-parent",
-		"--missing=print",
-		commit.String(),
-	)
+	args := append([]string{"rev-list", "--quiet"}, walkArgs...)
+	args = append(args, "--missing=print", commit.String())
+	output, err := r.runScalar(ctx, "checking "+scope+" completeness", maxScalarOutput, args...)
 	if err != nil {
 		if ctx.Err() != nil {
 			return err
@@ -168,7 +175,7 @@ func (r *Repository) classifyFirstParentFailure(
 		return traversalErr
 	}
 
-	return fmt.Errorf("%w: first-parent history references an unavailable object", ErrIncompleteRepository)
+	return fmt.Errorf("%w: %s references an unavailable object", ErrIncompleteRepository, scope)
 }
 
 func parseMissingObjectReport(output []byte) ([]ObjectID, error) {

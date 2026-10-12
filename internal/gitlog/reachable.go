@@ -8,7 +8,10 @@ import (
 
 // ReachableCommits counts every commit reachable from commit, merged branches
 // included, for the report's reproducibility record. It reads commit objects
-// only and contributes no event or path.
+// only and contributes no event or path. A successful first-parent walk does
+// not prove that commits reachable only through secondary parents exist, so a
+// failed count is classified like a failed first-parent walk: incomplete only
+// when every object a bounded diagnostic reports is confirmed missing.
 //
 // commit must be a complete lowercase object ID, normally one [ResolveCommit]
 // returned: like the first-parent walk, the command carries no
@@ -21,7 +24,7 @@ func (r *Repository) ReachableCommits(ctx context.Context, commit string) (int, 
 
 	output, err := r.runScalar(ctx, "counting reachable commits", maxScalarOutput, "rev-list", "--count", id.String())
 	if err != nil {
-		return 0, err
+		return 0, r.classifyTraversalFailure(ctx, id, err, "reachable history")
 	}
 
 	return parseCount(output)

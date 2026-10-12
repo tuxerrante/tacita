@@ -72,3 +72,21 @@ func TestParseCount(t *testing.T) {
 		}
 	}
 }
+
+// TestReachableCommitsClassifiesAMissingSideParent removes a commit reachable
+// only through a merge's secondary parent: the first-parent walk still
+// succeeds, and the full count must report an incomplete repository rather
+// than a generic Git failure.
+func TestReachableCommitsClassifiesAMissingSideParent(t *testing.T) {
+	repository, ids := newBranchedTestRepository(t)
+	removeObject(t, repository, ids["side2"])
+	repo := openTestRepository(t, repository)
+
+	if _, err := repo.FirstParentEvents(t.Context(), ids["merge"]); err != nil {
+		t.Fatalf("FirstParentEvents() error = %v, want the first-parent walk to succeed", err)
+	}
+	_, err := repo.ReachableCommits(t.Context(), ids["merge"])
+	if !errors.Is(err, ErrIncompleteRepository) {
+		t.Fatalf("ReachableCommits() error = %v, want ErrIncompleteRepository", err)
+	}
+}

@@ -456,7 +456,12 @@ git <repository-target> rev-list --count <resolved-object-id>
 ```
 
 It reads commit objects only, contributes no event or path, and its output must
-be one positive decimal count without leading zeros followed by one LF. The
+be one positive decimal count without leading zeros followed by one LF. A
+successful first-parent walk does not prove that commits reachable only through
+secondary parents exist, so a failed count runs the same bounded diagnostic
+over the full walk, `rev-list --quiet --missing=print <resolved-object-id>`
+with the batch check, and reports an incomplete repository only when every
+reported object is confirmed missing. The
 `git version` output that environment validation already reads supplies the
 report's Git version, its third field.
 

@@ -753,17 +753,24 @@ every development engineering dimension and required negative control passes
 on both development repositories is read as follows, and these conditions are
 ratified here as the behavior the implementation pins:
 
-1. lane conditions fail every configuration: two runs of a development
-   repository whose report bytes differ, a run the harness reports over its
-   elapsed-time or peak-memory budget, a development report that is not
-   `complete`, and a `go-starter` or Proficiency report without exactly its
-   role's control record (`template_origin` or `young_repository`) passing;
+1. lane conditions fail every configuration: two runs of any corpus
+   repository whose report bytes differ, a run the harness reports as failed
+   or over its elapsed-time or peak-memory budget, a development report that
+   is not `complete`, and a `go-starter` or Proficiency report without exactly
+   its role's control record (`template_origin` or `young_repository`)
+   passing;
 2. a repository-level gate that does not pass, such as the no-history control,
    makes every configuration unselectable;
 3. a configuration is selectable only if every one of its gates passes on both
    development reports.
 
-The selector keys are the passing gates' own metrics, the decimal values the
+Before ranking, the selector recomputes every configuration's
+frequent-consequent, shuffled-control, and unweighted gains from the report's
+model and baseline records and rejects any gate that disagrees by more than the
+two-millionths that six-digit rounding allows, so a gate cannot claim a gain
+its recorded metrics do not support. Selection runs only on `linux/amd64`, the
+platform the reports are produced on, so the lock's architecture is observed
+rather than assumed. The selector keys are the passing gates' own metrics, the decimal values the
 reports record, so values within the six-digit precision tie and fall through
 to the next key.
 

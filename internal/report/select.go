@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"math"
 	"slices"
+	"strings"
 )
 
 // sizeWeightSimplicity is the frozen simplicity order of size weights.
@@ -18,22 +19,25 @@ const (
 	LaneControlFailed          = "control_failed"
 )
 
-// DevelopmentRun is one development repository's calibration evidence: two
+// RepositoryRun is one corpus repository's calibration evidence: two
 // independent runs' canonical reports and the harness's operational verdict.
-type DevelopmentRun struct {
+type RepositoryRun struct {
 	Report []byte
 	Repeat []byte
-	// OperationalPass reports that both runs stayed within the elapsed-time
-	// and peak-memory budgets the harness enforces.
+	// OperationalPass reports that both runs exited cleanly and stayed within
+	// the elapsed-time and peak-memory budgets the harness enforces.
 	OperationalPass bool
 }
 
 // SelectionInput is the complete development evidence, in corpus order.
 type SelectionInput struct {
 	// Development holds golang/tools, then Kubernetes.
-	Development [2]DevelopmentRun
-	// Controls holds the go-starter, then the Proficiency calibration report.
-	Controls [2][]byte
+	Development [2]RepositoryRun
+	// Controls holds go-starter, then Proficiency.
+	Controls [2]RepositoryRun
+	// Platform is the trusted GOOS/GOARCH of the process that produced and
+	// selects from the reports; only the frozen linux/amd64 can write a lock.
+	Platform string
 }
 
 // LaneFailure is a condition that fails the whole development lane.
@@ -69,50 +73,67 @@ type selectable struct {
 
 // Select applies development-selector-v1. A configuration is selectable only
 // if every development gate and every required control passes on both
-// development repositories, both runs of each are byte-identical, and the
-// harness reports both within their operational budgets. Among selectable
+// development repositories, both runs of every corpus repository are
+// byte-identical, and the harness reports every run within its operational
+// budgets. Among selectable
 // configurations it compares, in order: the greatest worst-case gain over
 // frequent consequent, the greatest worst-case coverage, the greatest minimum
 // adjacent Jaccard, the simplest size weight, the lowest threshold tuple, and
 // the ascending configuration ID.
 //
-// Malformed reports, reports of the wrong corpus commits, and reports from
-// different environments are errors rather than lane failures: they are not
-// evidence about the experiment.
+// Malformed reports, reports of the wrong corpus commits, reports from
+// different environments, gate metrics that disagree with the recorded
+// metrics, and selection outside linux/amd64 are errors rather than lane
+// failures: they are not evidence about the experiment.
 func Select(input SelectionInput) (Selection, error) {
+	if input.Platform != lockArchitecture {
+		return Selection{}, invalid("selection runs only on the frozen %s, not %q", lockArchitecture, input.Platform)
+	}
+
+	var selection Selection
+	checkRuns := func(run RepositoryRun, repository CorpusRepository) (Report, error) {
+		report, err := decodeRole(run.Report, repository)
+		if err != nil {
+			return Report{}, err
+		}
+		if !bytes.Equal(run.Report, run.Repeat) {
+			selection.LaneFailures = append(selection.LaneFailures,
+				LaneFailure{Repository: repository.Commit, Reason: LaneNondeterministicReport})
+		}
+		if !run.OperationalPass {
+			selection.LaneFailures = append(selection.LaneFailures,
+				LaneFailure{Repository: repository.Commit, Reason: LaneOperationalLimit})
+		}
+		return report, nil
+	}
+
 	development := make([]Report, len(input.Development))
 	digests := make([]ReportDigest, len(input.Development))
-	var selection Selection
 	for index, run := range input.Development {
-		report, err := decodeRole(run.Report, []CorpusRepository{golangTools, kubernetes}[index])
+		repository := []CorpusRepository{golangTools, kubernetes}[index]
+		report, err := checkRuns(run, repository)
 		if err != nil {
 			return Selection{}, err
 		}
 		development[index] = report
-		repository := report.Repository.ResolvedCommit
-		digests[index] = ReportDigest{RepositoryObjectID: repository, ReportDigest: Digest(run.Report)}
-		if !bytes.Equal(run.Report, run.Repeat) {
-			selection.LaneFailures = append(selection.LaneFailures, LaneFailure{Repository: repository, Reason: LaneNondeterministicReport})
-		}
-		if !run.OperationalPass {
-			selection.LaneFailures = append(selection.LaneFailures, LaneFailure{Repository: repository, Reason: LaneOperationalLimit})
-		}
+		digests[index] = ReportDigest{RepositoryObjectID: repository.Commit, ReportDigest: Digest(run.Report)}
 		if report.Status != statusComplete {
-			selection.LaneFailures = append(selection.LaneFailures, LaneFailure{Repository: repository, Reason: LaneReportNotComplete})
+			selection.LaneFailures = append(selection.LaneFailures,
+				LaneFailure{Repository: repository.Commit, Reason: LaneReportNotComplete})
 		}
 	}
 
 	controls := make([]Report, len(input.Controls))
-	for index, data := range input.Controls {
-		role := []CorpusRepository{goStarter, proficiency}[index]
-		report, err := decodeRole(data, role)
+	for index, run := range input.Controls {
+		repository := []CorpusRepository{goStarter, proficiency}[index]
+		report, err := checkRuns(run, repository)
 		if err != nil {
 			return Selection{}, err
 		}
 		controls[index] = report
-		if !controlPasses(report, controlIDFor(role)) {
+		if !controlPasses(report, controlIDFor(repository)) {
 			selection.LaneFailures = append(selection.LaneFailures,
-				LaneFailure{Repository: report.Repository.ResolvedCommit, Reason: LaneControlFailed})
+				LaneFailure{Repository: repository.Commit, Reason: LaneControlFailed})
 		}
 	}
 
@@ -130,6 +151,11 @@ func Select(input SelectionInput) (Selection, error) {
 	// Decoding guarantees that both complete reports hold the identical frozen
 	// grid in configuration order, so their configurations correspond.
 
+	for _, report := range development {
+		if err := checkGains(report); err != nil {
+			return Selection{}, err
+		}
+	}
 	candidates, rejections, err := selectableConfigurations(development)
 	if err != nil {
 		return Selection{}, err
@@ -306,7 +332,7 @@ func selectableConfigurations(reports []Report) ([]selectable, []Rejection, erro
 				}
 			}
 			if passes {
-				keys.gain = min(keys.gain, float64(*gates["frequent_consequent_gain"].Metric.Value))
+				keys.gain = min(keys.gain, float64(*gates[gateFrequentGain].Metric.Value))
 				keys.coverage = min(keys.coverage, float64(*gates["coverage"].Metric.Value))
 				keys.jaccard = min(keys.jaccard, float64(*gates["adjacent_jaccard"].Metric.Value))
 			}
@@ -346,4 +372,72 @@ func compareSelectable(left, right selectable) int {
 		cmp.Compare(left.configuration.MinimumLift, right.configuration.MinimumLift),
 		cmp.Compare(left.configuration.ConfigurationID, right.configuration.ConfigurationID),
 	)
+}
+
+// gainTolerance bounds the disagreement between a gain gate's metric, decided
+// on unrounded values, and the same gain recomputed from six-digit report
+// values: each of the three roundings contributes at most half a unit in the
+// sixth place.
+const gainTolerance = 2e-6
+
+// checkGains recomputes every configuration's three gain gates from the
+// report's own model and baseline records and rejects any disagreement, so a
+// gate cannot claim a gain its recorded metrics do not support.
+func checkGains(report Report) error {
+	models := make(map[string]MetricRecord, len(report.Metrics))
+	for _, record := range report.Metrics {
+		models[record.ConfigurationID] = record
+	}
+	baselines := make(map[string]Baseline, len(report.Baselines))
+	for _, baseline := range report.Baselines {
+		if baseline.ConfigurationID != nil {
+			baselines[recordKey(baseline.ConfigurationID, baseline.ID)] = baseline
+		}
+	}
+
+	for _, configuration := range report.Configurations {
+		id := configuration.ConfigurationID
+		model := models[id]
+		comparisons := map[string][2]Metric{
+			"frequent_consequent_gain": {
+				baselines[recordKey(&id, "frequent_consequent")].MicroAdherence,
+				baselines[recordKey(&id, "frequent_consequent")].MacroAdherence,
+			},
+			"shuffled_control_gain": {
+				baselines[recordKey(&id, "hash_shuffled")].MicroAdherence,
+				baselines[recordKey(&id, "hash_shuffled")].MacroAdherence,
+			},
+		}
+		if configuration.SizeWeight != weightUnit {
+			counterpart := models[strings.Replace(id, "weight="+configuration.SizeWeight, "weight="+weightUnit, 1)]
+			comparisons[gateUnweighted] = [2]Metric{counterpart.MicroAdherence, counterpart.MacroAdherence}
+		}
+		for _, gate := range report.Gates {
+			baseline, ok := comparisons[gate.ID]
+			if !ok || gate.ConfigurationID == nil || *gate.ConfigurationID != id {
+				continue
+			}
+			want, defined := recomputedGain(model, baseline)
+			if defined != (gate.Metric.Value != nil) ||
+				(defined && math.Abs(float64(*gate.Metric.Value)-want) > gainTolerance) {
+				return invalid("report %s configuration %s gate %s disagrees with its recorded metrics",
+					report.Repository.ResolvedCommit, id, gate.ID)
+			}
+		}
+	}
+
+	return nil
+}
+
+// recomputedGain is the smaller of the micro and macro differences between a
+// model record and a baseline, or undefined when any value is.
+func recomputedGain(model MetricRecord, baseline [2]Metric) (float64, bool) {
+	values := []*Decimal{model.MicroAdherence.Value, model.MacroAdherence.Value, baseline[0].Value, baseline[1].Value}
+	for _, value := range values {
+		if value == nil {
+			return 0, false
+		}
+	}
+
+	return math.Min(float64(*values[0]-*values[2]), float64(*values[1]-*values[3])), true
 }

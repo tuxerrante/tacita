@@ -71,6 +71,28 @@ func selectionReport(t *testing.T, commit string, outcomes map[string]keys) []by
 		}
 		return compareOptional(left.ConfigurationID, right.ConfigurationID)
 	})
+	gains := make(map[string]float64)
+	for _, gate := range report.Gates {
+		if gate.ID == "frequent_consequent_gain" {
+			gains[*gate.ConfigurationID] = float64(*gate.Metric.Value)
+		}
+	}
+	for index, baseline := range report.Baselines {
+		if baseline.ConfigurationID == nil {
+			continue
+		}
+		var value float64
+		switch baseline.ID {
+		case "frequent_consequent":
+			value = 0.9 - gains[*baseline.ConfigurationID]
+		case "hash_shuffled":
+			value = 0.84
+		default:
+			continue
+		}
+		metric := decimalMetric(value)
+		report.Baselines[index].MicroAdherence, report.Baselines[index].MacroAdherence = metric, metric
+	}
 	encoded, err := Encode(report)
 	if err != nil {
 		t.Fatalf("Encode(selection report) error = %v", err)
@@ -101,15 +123,21 @@ func selectionInput(t *testing.T, tools, kubernetes map[string]keys) SelectionIn
 	toolsReport := selectionReport(t, GolangTools().Commit, tools)
 	kubernetesReport := selectionReport(t, Kubernetes().Commit, kubernetes)
 	return SelectionInput{
-		Development: [2]DevelopmentRun{
+		Development: [2]RepositoryRun{
 			{Report: toolsReport, Repeat: toolsReport, OperationalPass: true},
 			{Report: kubernetesReport, Repeat: kubernetesReport, OperationalPass: true},
 		},
-		Controls: [2][]byte{
-			controlReport(t, GoStarter(), outcomePass),
-			controlReport(t, Proficiency(), outcomePass),
+		Controls: [2]RepositoryRun{
+			controlRun(controlReport(t, GoStarter(), outcomePass)),
+			controlRun(controlReport(t, Proficiency(), outcomePass)),
 		},
+		Platform: "linux/amd64",
 	}
+}
+
+// controlRun is a control repository's two identical, in-budget runs.
+func controlRun(report []byte) RepositoryRun {
+	return RepositoryRun{Report: report, Repeat: report, OperationalPass: true}
 }
 
 const (
@@ -284,7 +312,7 @@ func TestSelectFailsTheLane(t *testing.T) {
 		{
 			name: "a failing control",
 			mutate: func(t *testing.T, input *SelectionInput) {
-				input.Controls[1] = controlReport(t, Proficiency(), outcomeFail)
+				input.Controls[1] = controlRun(controlReport(t, Proficiency(), outcomeFail))
 			},
 			want: LaneFailure{Repository: Proficiency().Commit, Reason: LaneControlFailed},
 		},
@@ -297,7 +325,7 @@ func TestSelectFailsTheLane(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Encode() error = %v", err)
 				}
-				input.Controls[0] = encoded
+				input.Controls[0] = controlRun(encoded)
 			},
 			want: LaneFailure{Repository: GoStarter().Commit, Reason: LaneControlFailed},
 		},
@@ -311,7 +339,7 @@ func TestSelectFailsTheLane(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Encode() error = %v", err)
 				}
-				input.Development[0] = DevelopmentRun{Report: encoded, Repeat: encoded, OperationalPass: true}
+				input.Development[0] = RepositoryRun{Report: encoded, Repeat: encoded, OperationalPass: true}
 			},
 			want: LaneFailure{Repository: GolangTools().Commit, Reason: LaneReportNotComplete},
 		},
@@ -352,7 +380,7 @@ func TestSelectRequiresRepositoryGatesToPass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
-	input.Development[1] = DevelopmentRun{Report: encoded, Repeat: encoded, OperationalPass: true}
+	input.Development[1] = RepositoryRun{Report: encoded, Repeat: encoded, OperationalPass: true}
 
 	selection, err := Select(input)
 	if err != nil {
@@ -374,32 +402,18 @@ func TestSelectRejectsInvalidEvidence(t *testing.T) {
 			input.Development[0], input.Development[1] = input.Development[1], input.Development[0]
 		},
 		"a holdout or unknown commit": func(t *testing.T, input *SelectionInput) {
-			input.Controls[1] = controlReport(t, CorpusRepository{Name: "other", Commit: strings.Repeat("9", 40)}, outcomePass)
+			input.Controls[1] = controlRun(controlReport(t, CorpusRepository{Name: "other", Commit: strings.Repeat("9", 40)}, outcomePass))
 		},
 		"malformed bytes": func(_ *testing.T, input *SelectionInput) {
 			input.Development[0].Report = []byte("{}\n")
 		},
 		"a different binary": func(t *testing.T, input *SelectionInput) {
-			report, err := Decode(input.Controls[0])
-			if err != nil {
-				t.Fatalf("Decode() error = %v", err)
-			}
-			report.Tool.TacitaBinarySHA256 = strings.Repeat("b", 64)
-			input.Controls[0], err = Encode(report)
-			if err != nil {
-				t.Fatalf("Encode() error = %v", err)
-			}
+			input.Controls[0] = controlRun(reencoded(t, input.Controls[0].Report, func(r *Report) {
+				r.Tool.TacitaBinarySHA256 = strings.Repeat("b", 64)
+			}))
 		},
 		"a backtest report": func(t *testing.T, input *SelectionInput) {
-			report, err := Decode(input.Controls[0])
-			if err != nil {
-				t.Fatalf("Decode() error = %v", err)
-			}
-			report.Kind = "backtest"
-			input.Controls[0], err = Encode(report)
-			if err != nil {
-				t.Fatalf("Encode() error = %v", err)
-			}
+			input.Controls[0] = controlRun(reencoded(t, input.Controls[0].Report, func(r *Report) { r.Kind = "backtest" }))
 		},
 	}
 
@@ -517,9 +531,9 @@ func reencoded(t *testing.T, data []byte, mutate func(*Report)) []byte {
 func TestSelectRequiresTheRoleSpecificControl(t *testing.T) {
 	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
 	input := selectionInput(t, passing, passing)
-	input.Controls[1] = reencoded(t, input.Controls[1], func(r *Report) {
+	input.Controls[1] = controlRun(reencoded(t, input.Controls[1].Report, func(r *Report) {
 		r.Controls = []Control{{ID: "template_origin", RootEventExcluded: true, Outcome: outcomePass}}
-	})
+	}))
 
 	selection, err := Select(input)
 	if err != nil {
@@ -558,7 +572,7 @@ func TestSelectRequiresTheFrozenGitVersion(t *testing.T) {
 		input.Development[index].Repeat = input.Development[index].Report
 	}
 	for index := range input.Controls {
-		input.Controls[index] = reencoded(t, input.Controls[index], func(r *Report) { r.Tool.GitVersion = "2.47.3" })
+		input.Controls[index] = controlRun(reencoded(t, input.Controls[index].Report, func(r *Report) { r.Tool.GitVersion = "2.47.3" }))
 	}
 
 	if _, err := Select(input); !errors.Is(err, ErrEncode) {
@@ -589,6 +603,89 @@ func TestSameMetric(t *testing.T) {
 	for _, tt := range tests {
 		if got := sameMetric(tt.left, tt.right); got != tt.want {
 			t.Errorf("sameMetric(%+v, %+v) = %t, want %t", tt.left, tt.right, got, tt.want)
+		}
+	}
+}
+
+func TestSelectChecksControlRunsLikeDevelopmentRuns(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	tests := []struct {
+		name   string
+		mutate func(*SelectionInput)
+		want   LaneFailure
+	}{
+		{
+			name: "a control repeat that differs",
+			mutate: func(input *SelectionInput) {
+				input.Controls[0].Repeat = controlReport(t, GoStarter(), outcomeFail)
+			},
+			want: LaneFailure{Repository: GoStarter().Commit, Reason: LaneNondeterministicReport},
+		},
+		{
+			name:   "a control run over its operational budget",
+			mutate: func(input *SelectionInput) { input.Controls[1].OperationalPass = false },
+			want:   LaneFailure{Repository: Proficiency().Commit, Reason: LaneOperationalLimit},
+		},
+	}
+	for _, tt := range tests {
+		input := selectionInput(t, passing, passing)
+		tt.mutate(&input)
+		selection, err := Select(input)
+		if err != nil {
+			t.Fatalf("%s: Select() error = %v", tt.name, err)
+		}
+		if selection.Lock != nil || !slices.Contains(selection.LaneFailures, tt.want) {
+			t.Errorf("%s: lock %v, lane failures %+v, want %+v", tt.name, selection.Lock != nil, selection.LaneFailures, tt.want)
+		}
+	}
+}
+
+func TestSelectRequiresTheFrozenPlatform(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	for _, platform := range []string{"", "darwin/arm64", "linux/arm64"} {
+		input := selectionInput(t, passing, passing)
+		input.Platform = platform
+		if _, err := Select(input); !errors.Is(err, ErrEncode) {
+			t.Errorf("Select(platform %q) error = %v, want ErrEncode", platform, err)
+		}
+	}
+}
+
+func TestSelectRejectsGainsTheRecordsDoNotSupport(t *testing.T) {
+	passing := map[string]keys{
+		unitLoose:    {gain: 0.3, coverage: 0.1, jaccard: 0.6},
+		inverseLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6},
+	}
+	tests := map[string]func(*Report){
+		"a frequent-consequent baseline": func(r *Report) {
+			index := slices.IndexFunc(r.Baselines, func(b Baseline) bool {
+				return b.ID == "frequent_consequent" && b.ConfigurationID != nil && *b.ConfigurationID == unitLoose
+			})
+			r.Baselines[index].MicroAdherence = decimalMetric(0.85)
+		},
+		"a shuffled baseline": func(r *Report) {
+			index := slices.IndexFunc(r.Baselines, func(b Baseline) bool {
+				return b.ID == "hash_shuffled" && b.ConfigurationID != nil && *b.ConfigurationID == unitLoose
+			})
+			r.Baselines[index].MacroAdherence = decimalMetric(0.88)
+		},
+		"an unweighted counterpart": func(r *Report) {
+			index := slices.IndexFunc(r.Metrics, func(m MetricRecord) bool { return m.ConfigurationID == unitLoose })
+			r.Metrics[index].MicroAdherence = decimalMetric(0.95)
+		},
+		"an undefined baseline": func(r *Report) {
+			index := slices.IndexFunc(r.Baselines, func(b Baseline) bool {
+				return b.ID == "frequent_consequent" && b.ConfigurationID != nil && *b.ConfigurationID == inverseLoose
+			})
+			r.Baselines[index].MicroAdherence = reasonMetric("no_opportunities")
+		},
+	}
+	for name, mutate := range tests {
+		input := selectionInput(t, passing, passing)
+		input.Development[0].Report = reencoded(t, input.Development[0].Report, mutate)
+		input.Development[0].Repeat = input.Development[0].Report
+		if _, err := Select(input); !errors.Is(err, ErrEncode) {
+			t.Errorf("%s: Select() error = %v, want ErrEncode", name, err)
 		}
 	}
 }

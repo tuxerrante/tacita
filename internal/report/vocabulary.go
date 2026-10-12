@@ -17,6 +17,8 @@ const (
 	scopePath              = "path"
 	gateNoHistory          = "no_history_control"
 	gateUnweighted         = "unweighted_gain"
+	gateFrequentGain       = "frequent_consequent_gain"
+	gateShuffledGain       = "shuffled_control_gain"
 	baselineNoHistory      = "no_history"
 	baselineUnweighted     = "unweighted"
 	codeReportBytes        = "budget_report_bytes"
@@ -120,9 +122,9 @@ var gateRequirements = map[string]gateRequirement{
 	"coverage":                   {operator: ">=", threshold: 0.05},
 	"cutoff_display":             {operator: ">=", threshold: 1},
 	"evaluation_windows_covered": {operator: ">=", threshold: 1},
-	"frequent_consequent_gain":   {operator: ">=", threshold: 0.10},
+	gateFrequentGain:             {operator: ">=", threshold: 0.10},
 	gateNoHistory:                {operator: "<=", threshold: 0},
-	"shuffled_control_gain":      {operator: ">=", threshold: 0.05},
+	gateShuffledGain:             {operator: ">=", threshold: 0.05},
 	gateUnweighted:               {operator: ">=", threshold: 0},
 }
 

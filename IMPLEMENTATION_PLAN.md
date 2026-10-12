@@ -80,6 +80,9 @@ Implemented:
   evaluation, and the no-history control;
 - per-configuration development gate outcomes for every frozen requirement a
   single repository decides, combined conjunctively, and the no-history gate;
+- canonical `tacita.report/v1` calibration reports and the `tacita.grid/v1`
+  artifact, with validation, strict canonical decoding, and the report row and
+  byte budgets;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
@@ -88,7 +91,7 @@ Not implemented:
 
 - the development selector and configuration lock;
 - profile evaluation;
-- report schema or rendering;
+- text rendering;
 - proposal, ratification, manifests, or checking.
 
 The current CLI is disposable. Its shape may change when the first real command

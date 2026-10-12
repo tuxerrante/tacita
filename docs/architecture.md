@@ -730,6 +730,15 @@ limits not observed by Tacita itself.
 The frozen machine contract is [`report-v1.md`](report-v1.md). JSON is
 authoritative; text renders from the same decoded typed model.
 
+`internal/report` implements the calibration subset. `Encode` validates every
+enumeration, ordering, identity, and count invariant before rendering, then
+enforces the report row and byte budgets with their frozen failure codes.
+`Decode` rejects unknown fields and re-encodes the decoded model, failing
+unless the bytes are reproduced exactly, so any accepted report is canonical.
+`Calibration` builds a repository's report from both orderings' outcomes and
+decides its gates itself, so the recorded gates cannot disagree with the
+recorded metrics.
+
 For identical resolved inputs, configuration, Tacita binary, and Git version,
 canonical output must be byte-identical. Therefore:
 

@@ -244,6 +244,9 @@ func validateShape(report Report) error {
 	budgets := make([]string, len(report.Budgets))
 	for index, budget := range report.Budgets {
 		budgets[index] = budget.ID
+		if budget.Outcome != nil && *budget.Outcome != outcomePass {
+			return invalid("complete calibration exceeds budget %q; exhaustion produces a failed report", budget.ID)
+		}
 	}
 	if !slices.Equal(budgets, budgetIDs()) {
 		return invalid("complete calibration budgets %v, want the frozen table", budgets)
@@ -657,6 +660,11 @@ func validateGateOutcome(gate Gate) error {
 		return invalid("%s gate %q needs a defined metric and no reason", gate.Outcome, gate.ID)
 	}
 	value, threshold := float64(*gate.Metric.Value), float64(gate.Threshold)
+	if roundsEqual(value, threshold) {
+		// The outcome was decided on the unrounded value, which the six-digit
+		// rendering no longer shows, so either side of the threshold is valid.
+		return nil
+	}
 	satisfied := value >= threshold
 	if gate.Operator == "<=" {
 		satisfied = value <= threshold
@@ -666,6 +674,14 @@ func validateGateOutcome(gate Gate) error {
 	}
 
 	return nil
+}
+
+// roundsEqual reports whether two finite values render as the same canonical
+// decimal string.
+func roundsEqual(left, right float64) bool {
+	leftText, leftErr := formatDecimal(left)
+	rightText, rightErr := formatDecimal(right)
+	return leftErr == nil && rightErr == nil && leftText == rightText
 }
 
 func validateLimitations(report Report) error {

@@ -160,7 +160,9 @@ frozen budget record, all six exclusion records, the `no_history` baseline and
 one record of each other baseline per configuration, and exactly the frozen
 development gate set: `no_history_control` for the repository and every other
 gate for each configuration, `unweighted_gain` only for non-`unit` weights.
-Every candidate, baseline, and gate names a configuration the report holds.
+Every candidate, baseline, and gate names a configuration the report holds,
+and every observed budget passes, because budget exhaustion produces a `failed`
+report instead.
 
 ### Candidate records
 
@@ -279,7 +281,8 @@ repository. Its operator and threshold are fixed: `adjacent_jaccard` `>=` 0.50,
 `frequent_consequent_gain` `>=` 0.10, `shuffled_control_gain` `>=` 0.05,
 `unweighted_gain` `>=` 0, and `no_history_control` `<=` 0. A `pass` or `fail`
 gate holds a defined metric on the matching side of its threshold and a `null`
-reason; an `inconclusive` gate holds an undefined metric and repeats its
+reason, except that a metric rendering as the threshold's decimal string may
+carry either outcome, because the outcome was decided on the unrounded value; an `inconclusive` gate holds an undefined metric and repeats its
 reason. `no_history_control` is a repository gate with `null`
 configuration ID. `unweighted_gain` is omitted for a `unit` configuration,
 whose baseline is itself. A gate over both micro and macro adherence reports

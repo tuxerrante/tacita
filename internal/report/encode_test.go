@@ -435,9 +435,12 @@ func TestEncodeRejectsContractViolations(t *testing.T) {
 		"repository gate with a configuration": func(r *Report) {
 			r.Gates[noHistoryGate(r)].ConfigurationID = text(r.Configurations[0].ConfigurationID)
 		},
-		"pass gate without a metric":     func(r *Report) { r.Gates[noHistoryGate(r)].Metric = reasonMetric("no_opportunities") },
-		"pass gate over its threshold":   func(r *Report) { r.Gates[noHistoryGate(r)].Metric = decimalValue(3) },
-		"fail gate within its threshold": func(r *Report) { r.Gates[noHistoryGate(r)].Outcome = outcomeFail },
+		"pass gate without a metric":   func(r *Report) { r.Gates[noHistoryGate(r)].Metric = reasonMetric("no_opportunities") },
+		"pass gate over its threshold": func(r *Report) { r.Gates[noHistoryGate(r)].Metric = decimalValue(3) },
+		"fail gate within its threshold": func(r *Report) {
+			index := slices.IndexFunc(r.Gates, func(g Gate) bool { return g.ID == "coverage" })
+			r.Gates[index].Outcome, r.Gates[index].Metric, r.Gates[index].Reason = outcomeFail, decimalValue(0.5), nil
+		},
 		"inconclusive gate with a value": func(r *Report) { r.Gates[1].Metric = defined },
 		"inconclusive gate with another reason": func(r *Report) {
 			r.Gates[1].Metric = reasonMetric("no_candidates")
@@ -479,6 +482,11 @@ func TestEncodeRejectsContractViolations(t *testing.T) {
 				candidate.Antecedent, candidate.ID = Bytes(antecedent), CandidateID("inferred", antecedent, "b")
 				withCandidate(r, candidate)
 			}
+		},
+		"complete report over a budget": func(r *Report) {
+			index := slices.IndexFunc(r.Budgets, func(b Budget) bool { return b.ID == "distinct_pairs" })
+			observed, outcome := int64(2_000_001), outcomeFail
+			r.Budgets[index].Observed, r.Budgets[index].Outcome = &observed, &outcome
 		},
 		"gate order": func(r *Report) {
 			r.Gates = []Gate{
@@ -664,5 +672,33 @@ func TestDecodeRejectsOversizedInputBeforeParsing(t *testing.T) {
 	var limit *LimitError
 	if !errors.As(err, &limit) || limit.Code != "budget_report_bytes" {
 		t.Errorf("Decode(oversized) error = %v, want budget_report_bytes", err)
+	}
+}
+
+// TestGateDecidedJustBelowAThresholdRoundTrips covers a gate decided on an
+// unrounded metric that renders as its threshold: the canonical report must
+// still decode.
+func TestGateDecidedJustBelowAThresholdRoundTrips(t *testing.T) {
+	report := completeReport()
+	coverage := slices.IndexFunc(report.Gates, func(g Gate) bool { return g.ID == "coverage" })
+	report.Gates[coverage].Outcome = outcomeFail
+	report.Gates[coverage].Metric = decimalValue(0.0499996)
+	report.Gates[coverage].Reason = nil
+
+	encoded, err := Encode(report)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if !strings.Contains(string(encoded), `"value":"0.050000"`) {
+		t.Fatalf("the metric did not render at its threshold: %s", encoded)
+	}
+	if _, err := Decode(encoded); err != nil {
+		t.Errorf("Decode(Encode(report)) error = %v", err)
+	}
+
+	report.Gates[coverage].Metric = decimalValue(0.049)
+	report.Gates[coverage].Outcome = outcomePass
+	if _, err := Encode(report); !errors.Is(err, ErrEncode) {
+		t.Errorf("Encode(pass well below the threshold) error = %v, want ErrEncode", err)
 	}
 }

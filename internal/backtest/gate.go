@@ -81,6 +81,12 @@ func DevelopmentGates(chronological, shuffled []Outcome) ([]ConfigurationGates, 
 		if shuffled[index].Configuration != outcome.Configuration {
 			return nil, &OutcomeMismatchError{Chronological: len(chronological), Shuffled: len(shuffled)}
 		}
+		if err := checkShape(outcome); err != nil {
+			return nil, err
+		}
+		if err := checkShape(shuffled[index]); err != nil {
+			return nil, err
+		}
 		byConfiguration[outcome.Configuration] = outcome
 	}
 
@@ -115,6 +121,23 @@ func DevelopmentGates(chronological, shuffled []Outcome) ([]ConfigurationGates, 
 	}
 
 	return decided, nil
+}
+
+// checkShape requires one display, one covered count, and one transaction
+// count per cutoff, and at least one cutoff, so every per-cutoff gate decides
+// over the same windows and never reports a metric over no cutoff.
+func checkShape(outcome Outcome) error {
+	cutoffs := len(outcome.Displays)
+	if cutoffs == 0 || len(outcome.Model.Covered) != cutoffs || len(outcome.Model.Transactions) != cutoffs {
+		return &OutcomeShapeError{
+			Configuration: outcome.Configuration,
+			Displays:      cutoffs,
+			Covered:       len(outcome.Model.Covered),
+			Transactions:  len(outcome.Model.Transactions),
+		}
+	}
+
+	return nil
 }
 
 // NoHistoryGate decides the repository's no-history control, which requires

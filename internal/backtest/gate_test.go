@@ -286,3 +286,40 @@ func TestGateErrorMessages(t *testing.T) {
 		}
 	}
 }
+
+func TestDevelopmentGatesRejectsMalformedCutoffShapes(t *testing.T) {
+	configurations := mining.AllConfigurations()[:1]
+	chronological, shuffled := evaluatedOrderings(t, configurations)
+
+	tests := map[string]func(*Outcome){
+		"no cutoff": func(o *Outcome) {
+			o.Displays = nil
+			o.Model.Covered = nil
+			o.Model.Transactions = nil
+		},
+		"extra covered count":       func(o *Outcome) { o.Model.Covered = append(o.Model.Covered, 1) },
+		"missing transaction count": func(o *Outcome) { o.Model.Transactions = o.Model.Transactions[1:] },
+	}
+	for name, mutate := range tests {
+		for _, side := range []string{"chronological", "shuffled"} {
+			left := slices.Clone(chronological)
+			right := slices.Clone(shuffled)
+			target := &left[0]
+			if side == "shuffled" {
+				target = &right[0]
+			}
+			mutate(target)
+
+			_, err := DevelopmentGates(left, right)
+
+			var shapeErr *OutcomeShapeError
+			if !errors.As(err, &shapeErr) || !errors.Is(err, ErrOutcomeShape) {
+				t.Errorf("%s %s: DevelopmentGates() error = %v, want OutcomeShapeError", name, side, err)
+			}
+		}
+	}
+	got := (&OutcomeShapeError{Configuration: configurations[0], Displays: 4, Covered: 5, Transactions: 4}).Error()
+	if want := "outcome " + configurations[0].ID() + " has 4 displays, 5 covered counts, and 4 transaction counts"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}

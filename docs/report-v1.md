@@ -131,7 +131,8 @@ the report that contains it, so these four records set `observed` and
 Every other record's `observed` is non-negative and its `outcome` is `pass`
 exactly when `observed` is at most `limit`.
 
-Each exclusion record contains `scope`, `reason`, and `count`. Scope is `event`
+Each exclusion record contains `scope`, `reason`, and `count`. Only the frozen
+scope and reason pairs below are valid. Scope is `event`
 or `path`. Records are sorted by scope then reason. A report lists every event
 reason (`event_component_limit`, `event_path_limit`, `no_eligible_paths`,
 `root_event`) and path reason (`gitlink_path`, `vendor_path`), zero counts
@@ -154,12 +155,19 @@ each eligible count fits its range.
 
 A `complete` calibration report holds all 81 frozen configurations, each
 record matching its frozen grid point, the `60`, `70`, `80`, and `90`
-partitions, and one metric record per configuration in configuration order.
+partitions, one metric record per configuration in configuration order, every
+frozen budget record, all six exclusion records, the `no_history` baseline and
+one record of each other baseline per configuration, and exactly the frozen
+development gate set: `no_history_control` for the repository and every other
+gate for each configuration, `unweighted_gain` only for non-`unit` weights.
+Every candidate, baseline, and gate names a configuration the report holds.
 
 ### Candidate records
 
 Candidates are ordered by configuration ID, partition, rank, then candidate ID.
 A final full-history proposal uses partition `100`.
+Within one configuration and partition, ranks run from 1 without gaps and
+never exceed the display limit of 10.
 
 Each inferred candidate contains:
 
@@ -266,7 +274,13 @@ unweighted_gain
 ```
 
 Each names one frozen development engineering requirement decided on one
-repository. `no_history_control` is a repository gate with `null`
+repository. Its operator and threshold are fixed: `adjacent_jaccard` `>=` 0.50,
+`coverage` `>=` 0.05, `cutoff_display` and `evaluation_windows_covered` `>=` 1,
+`frequent_consequent_gain` `>=` 0.10, `shuffled_control_gain` `>=` 0.05,
+`unweighted_gain` `>=` 0, and `no_history_control` `<=` 0. A `pass` or `fail`
+gate holds a defined metric on the matching side of its threshold and a `null`
+reason; an `inconclusive` gate holds an undefined metric and repeats its
+reason. `no_history_control` is a repository gate with `null`
 configuration ID. `unweighted_gain` is omitted for a `unit` configuration,
 whose baseline is itself. A gate over both micro and macro adherence reports
 the smaller of the two differences as its metric.

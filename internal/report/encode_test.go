@@ -2,8 +2,10 @@ package report
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,6 +46,11 @@ func configurationRecord(configuration mining.Configuration) Configuration {
 	}
 }
 
+func decimalValue(value float64) Metric {
+	decimal := Decimal(value)
+	return Metric{Value: &decimal}
+}
+
 func reasonMetric(reason string) Metric {
 	return Metric{Reason: &reason}
 }
@@ -80,7 +87,84 @@ func completeReport() Report {
 			MinimumJaccard:   floor,
 		})
 	}
+	report.Budgets = frozenBudgetRecords()
+	report.Exclusions = zeroExclusions()
+	report.Baselines = abstainingBaselines(report.Configurations)
+	report.Gates = abstainingGates(report.Configurations)
 	return report
+}
+
+// frozenBudgetRecords is every frozen budget with a zero observation where
+// one is recorded.
+func frozenBudgetRecords() []Budget {
+	var records []Budget
+	for _, spec := range FrozenBudgets() {
+		record := Budget{ID: spec.ID, Unit: spec.Unit, Limit: spec.Limit}
+		if !spec.Unobserved {
+			observed, outcome := int64(0), outcomePass
+			record.Observed, record.Outcome = &observed, &outcome
+		}
+		records = append(records, record)
+	}
+	return records
+}
+
+func zeroExclusions() []Exclusion {
+	records := make([]Exclusion, len(exclusionPairs))
+	for index, pair := range exclusionPairs {
+		records[index] = Exclusion{Scope: pair[0], Reason: pair[1]}
+	}
+	return records
+}
+
+// abstainingBaselines is the frozen baseline set of a calibration below the
+// inference floor.
+func abstainingBaselines(configurations []Configuration) []Baseline {
+	floor := reasonMetric("below_inference_floor")
+	pass := outcomePass
+	records := []Baseline{{
+		ID: "no_history", MicroAdherence: floor, MacroAdherence: floor, Coverage: floor,
+		CutoffAbstention: floor, MinimumJaccard: floor, Outcome: &pass,
+	}}
+	for _, configuration := range configurations {
+		id := configuration.ConfigurationID
+		for _, baseline := range []string{"frequent_consequent", "hash_shuffled", "unweighted"} {
+			metric := floor
+			if baseline == "unweighted" && configuration.SizeWeight == weightUnit {
+				metric = reasonMetric("identical_baseline")
+			}
+			records = append(records, Baseline{
+				ConfigurationID: &id, ID: baseline, MicroAdherence: metric, MacroAdherence: metric,
+				Coverage: metric, CutoffAbstention: metric, MinimumJaccard: metric,
+			})
+		}
+	}
+	return records
+}
+
+// abstainingGates is the frozen gate set of a calibration below the inference
+// floor: every development gate is inconclusive.
+func abstainingGates(configurations []Configuration) []Gate {
+	zero := Decimal(0)
+	records := []Gate{{ID: "no_history_control", Outcome: outcomePass, Metric: Metric{Value: &zero}, Operator: "<="}}
+	for _, configuration := range configurations {
+		id := configuration.ConfigurationID
+		for _, gateID := range gateIDs {
+			if gateID == "no_history_control" || (gateID == "unweighted_gain" && configuration.SizeWeight == weightUnit) {
+				continue
+			}
+			reason := "below_inference_floor"
+			requirement := gateRequirements[gateID]
+			records = append(records, Gate{
+				ConfigurationID: &id, ID: gateID, Outcome: outcomeInconclusive, Metric: reasonMetric(reason),
+				Operator: requirement.operator, Threshold: Decimal(requirement.threshold), Reason: &reason,
+			})
+		}
+	}
+	slices.SortFunc(records, func(left, right Gate) int {
+		return cmp.Or(cmp.Compare(left.ID, right.ID), compareOptional(left.ConfigurationID, right.ConfigurationID))
+	})
+	return records
 }
 
 // withCandidate adds one consistent candidate at partition 60.
@@ -88,6 +172,12 @@ func withCandidate(report *Report, candidate Candidate) {
 	candidate.Partition = 60
 	report.Candidates = append(report.Candidates, candidate)
 	report.Partitions[0].DisplayedCandidates++
+}
+
+// noHistoryGate is the index of the repository-level gate; gates sort by ID,
+// so it is not first.
+func noHistoryGate(r *Report) int {
+	return slices.IndexFunc(r.Gates, func(gate Gate) bool { return gate.ID == "no_history_control" })
 }
 
 func validCandidate() Candidate {
@@ -129,12 +219,6 @@ func TestEncodeFailedReport(t *testing.T) {
 func TestDecodeRoundTripsCanonicalBytes(t *testing.T) {
 	report := completeReport()
 	report.Limitations = []string{"self_attested_freeze", "sha1_only"}
-	observed := int64(10)
-	pass := outcomePass
-	report.Budgets = []Budget{
-		{ID: "elapsed_time", Unit: "nanoseconds", Limit: 1_200_000_000_000},
-		{ID: "first_parent_events", Unit: "events", Limit: 200_000, Observed: &observed, Outcome: &pass},
-	}
 	withCandidate(&report, validCandidate())
 	encoded, err := Encode(report)
 	if err != nil {
@@ -345,6 +429,57 @@ func TestEncodeRejectsContractViolations(t *testing.T) {
 		"gate reason value": func(r *Report) {
 			r.Gates = []Gate{{ID: "coverage", Outcome: outcomePass, Operator: ">=", Metric: defined, Reason: text("tired")}}
 		},
+		"gate operator":            func(r *Report) { r.Gates[1].Operator = "<=" },
+		"gate threshold":           func(r *Report) { r.Gates[1].Threshold = 0.04 },
+		"gate of no configuration": func(r *Report) { r.Gates[1].ConfigurationID = text("weight=unit") },
+		"repository gate with a configuration": func(r *Report) {
+			r.Gates[noHistoryGate(r)].ConfigurationID = text(r.Configurations[0].ConfigurationID)
+		},
+		"pass gate without a metric":     func(r *Report) { r.Gates[noHistoryGate(r)].Metric = reasonMetric("no_opportunities") },
+		"pass gate over its threshold":   func(r *Report) { r.Gates[noHistoryGate(r)].Metric = decimalValue(3) },
+		"fail gate within its threshold": func(r *Report) { r.Gates[noHistoryGate(r)].Outcome = outcomeFail },
+		"inconclusive gate with a value": func(r *Report) { r.Gates[1].Metric = defined },
+		"inconclusive gate with another reason": func(r *Report) {
+			r.Gates[1].Metric = reasonMetric("no_candidates")
+		},
+		"missing gate":     func(r *Report) { r.Gates = r.Gates[:len(r.Gates)-1] },
+		"missing baseline": func(r *Report) { r.Baselines = r.Baselines[:len(r.Baselines)-1] },
+		"baseline of no configuration": func(r *Report) {
+			r.Baselines[1].ConfigurationID = text("weight=unit")
+		},
+		"configuration no_history baseline": func(r *Report) {
+			r.Baselines[0].ConfigurationID = text(r.Configurations[0].ConfigurationID)
+		},
+		"missing budget":    func(r *Report) { r.Budgets = r.Budgets[1:] },
+		"missing exclusion": func(r *Report) { r.Exclusions = r.Exclusions[1:] },
+		"exclusion pair":    func(r *Report) { r.Exclusions[0].Reason = "vendor_path" },
+		"candidate of no configuration": func(r *Report) {
+			candidate := validCandidate()
+			candidate.ConfigurationID = "weight=unit"
+			withCandidate(r, candidate)
+		},
+		"skipped rank": func(r *Report) {
+			withCandidate(r, validCandidate())
+			third := validCandidate()
+			third.Rank = 3
+			third.Antecedent, third.ID = "c", CandidateID("inferred", "c", "b")
+			withCandidate(r, third)
+		},
+		"repeated rank": func(r *Report) {
+			withCandidate(r, validCandidate())
+			again := validCandidate()
+			again.Antecedent, again.ID = "c", CandidateID("inferred", "c", "b")
+			withCandidate(r, again)
+		},
+		"rank beyond the display limit": func(r *Report) {
+			for rank := 1; rank <= 11; rank++ {
+				candidate := validCandidate()
+				candidate.Rank = rank
+				antecedent := strings.Repeat("a", rank)
+				candidate.Antecedent, candidate.ID = Bytes(antecedent), CandidateID("inferred", antecedent, "b")
+				withCandidate(r, candidate)
+			}
+		},
 		"gate order": func(r *Report) {
 			r.Gates = []Gate{
 				{ID: "coverage", Outcome: outcomePass, Operator: ">=", Metric: defined},
@@ -473,5 +608,61 @@ func TestCompareOptional(t *testing.T) {
 		if got := compareOptional(tt.left, tt.right); got != tt.want {
 			t.Errorf("compareOptional(%v, %v) = %d, want %d", tt.left, tt.right, got, tt.want)
 		}
+	}
+}
+
+// FuzzDecode asserts that Decode never panics and that every accepted input is
+// canonical: it re-encodes to exactly the bytes that were decoded.
+func FuzzDecode(f *testing.F) {
+	failed, err := Encode(failedReport())
+	if err != nil {
+		f.Fatal(err)
+	}
+	complete := completeReport()
+	withCandidate(&complete, validCandidate())
+	completeBytes, err := Encode(complete)
+	if err != nil {
+		f.Fatal(err)
+	}
+	text, full := string(failed), string(completeBytes)
+	for _, seed := range []string{
+		text,
+		full,
+		strings.Replace(text, `"kind"`, `"extra":1,"kind"`, 1),
+		strings.Replace(text, `,"kind"`, `, "kind"`, 1),
+		strings.TrimSuffix(text, "\n"),
+		strings.Replace(text, `"calibration"`, `"holdout"`, 1),
+		strings.Replace(text, `"status":"failed"`, `"status":"complete","status":"failed"`, 1),
+		strings.Replace(text, `"profiles":[]`, `"profiles":[{}]`, 1),
+		strings.Replace(full, `"threshold":"0.050000"`, `"threshold":"0.040000"`, 1),
+		strings.Replace(full, `"rank":1`, `"rank":2`, 1),
+		strings.Replace(full, `"reason":"root_event"`, `"reason":"vendor_path"`, 1),
+		"",
+		"{}\n",
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		report, err := Decode(data)
+		if err != nil {
+			return
+		}
+		again, err := Encode(report)
+		if err != nil {
+			t.Fatalf("Encode(decoded) error = %v", err)
+		}
+		if !bytes.Equal(again, data) {
+			t.Fatalf("accepted input is not canonical:\n%q\n%q", data, again)
+		}
+	})
+}
+
+func TestDecodeRejectsOversizedInputBeforeParsing(t *testing.T) {
+	_, err := Decode(make([]byte, maxReportBytes+1))
+
+	var limit *LimitError
+	if !errors.As(err, &limit) || limit.Code != "budget_report_bytes" {
+		t.Errorf("Decode(oversized) error = %v, want budget_report_bytes", err)
 	}
 }

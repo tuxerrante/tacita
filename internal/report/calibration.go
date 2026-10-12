@@ -236,7 +236,7 @@ func baselines(chronological, shuffled []backtest.Outcome, noHistory int) []Base
 	noHistoryOutcome := string(backtest.NoHistoryGate(noHistory).Outcome)
 	floor := metric(backtest.Metric{Reason: backtest.ReasonBelowInferenceFloor})
 	records := []Baseline{{
-		ID:                         "no_history",
+		ID:                         baselineNoHistory,
 		MicroAdherence:             floor,
 		MacroAdherence:             floor,
 		Coverage:                   floor,
@@ -252,13 +252,13 @@ func baselines(chronological, shuffled []backtest.Outcome, noHistory int) []Base
 			evaluationBaseline(id, "hash_shuffled", shuffled[index].Model),
 		)
 		if counterpart, ok := backtest.UnweightedCounterpart(outcome.Configuration); ok {
-			records = append(records, evaluationBaseline(id, "unweighted", byConfiguration[counterpart]))
+			records = append(records, evaluationBaseline(id, baselineUnweighted, byConfiguration[counterpart]))
 			continue
 		}
 		identical := metric(backtest.Metric{Reason: backtest.ReasonIdenticalBaseline})
 		records = append(records, Baseline{
 			ConfigurationID:            &id,
-			ID:                         "unweighted",
+			ID:                         baselineUnweighted,
 			MicroAdherence:             identical,
 			MacroAdherence:             identical,
 			Coverage:                   identical,

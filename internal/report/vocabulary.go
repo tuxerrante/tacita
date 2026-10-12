@@ -9,23 +9,29 @@ const (
 	statusFailed           = "failed"
 	outcomePass            = "pass"
 	outcomeFail            = "fail"
+	outcomeInconclusive    = "inconclusive"
 	weightUnit             = "unit"
 	weightInverseComponent = "inverse-component"
 	weightPairNormalized   = "pair-normalized"
+	scopeEvent             = "event"
+	scopePath              = "path"
+	gateNoHistory          = "no_history_control"
+	gateUnweighted         = "unweighted_gain"
+	baselineNoHistory      = "no_history"
+	baselineUnweighted     = "unweighted"
+	codeReportBytes        = "budget_report_bytes"
 )
 
 // Frozen enumerations. A value outside them is an encoding and decoding error.
 var (
-	kinds          = []string{"backtest", kindCalibration, "profile"}
-	statuses       = []string{statusComplete, statusFailed, "inconclusive"}
-	origins        = []string{"inferred"}
-	gateOutcomes   = []string{outcomeFail, "inconclusive", outcomePass}
-	operators      = []string{"<=", ">="}
-	exclusionScope = []string{"event", "path"}
-	eventKinds     = []string{"merge-result", "root", "single-parent"}
-	pathStatuses   = []string{"A", "D", "M", "T"}
-	baselineIDs    = []string{"frequent_consequent", "hash_shuffled", "no_history", "unweighted"}
-	controlIDs     = []string{"template_origin", "young_repository"}
+	kinds        = []string{"backtest", kindCalibration, "profile"}
+	statuses     = []string{statusComplete, statusFailed, outcomeInconclusive}
+	origins      = []string{"inferred"}
+	gateOutcomes = []string{outcomeFail, outcomeInconclusive, outcomePass}
+	eventKinds   = []string{"merge-result", "root", "single-parent"}
+	pathStatuses = []string{"A", "D", "M", "T"}
+	baselineIDs  = []string{"frequent_consequent", "hash_shuffled", "no_history", "unweighted"}
+	controlIDs   = []string{"template_origin", "young_repository"}
 
 	gateIDs = []string{
 		"adjacent_jaccard",
@@ -73,15 +79,6 @@ var (
 		"unsupported_platform",
 	}
 
-	exclusionReasons = []string{
-		"event_component_limit",
-		"event_path_limit",
-		"gitlink_path",
-		"no_eligible_paths",
-		"root_event",
-		"vendor_path",
-	}
-
 	limitationCodes = []string{
 		"evidence_metadata_confidential",
 		"generated_status_not_inferred",
@@ -99,6 +96,35 @@ var (
 		"timing_label_coupling",
 	}
 )
+
+// exclusionPairs are the frozen exclusion scope and reason pairs, in record
+// order.
+var exclusionPairs = [][2]string{
+	{scopeEvent, "event_component_limit"},
+	{scopeEvent, "event_path_limit"},
+	{scopeEvent, "no_eligible_paths"},
+	{scopeEvent, "root_event"},
+	{scopePath, "gitlink_path"},
+	{scopePath, "vendor_path"},
+}
+
+// gateRequirement is a development gate's frozen operator and threshold.
+type gateRequirement struct {
+	operator  string
+	threshold float64
+}
+
+// gateRequirements are the frozen development requirements by gate ID.
+var gateRequirements = map[string]gateRequirement{
+	"adjacent_jaccard":           {operator: ">=", threshold: 0.50},
+	"coverage":                   {operator: ">=", threshold: 0.05},
+	"cutoff_display":             {operator: ">=", threshold: 1},
+	"evaluation_windows_covered": {operator: ">=", threshold: 1},
+	"frequent_consequent_gain":   {operator: ">=", threshold: 0.10},
+	gateNoHistory:                {operator: "<=", threshold: 0},
+	"shuffled_control_gain":      {operator: ">=", threshold: 0.05},
+	gateUnweighted:               {operator: ">=", threshold: 0},
+}
 
 // BudgetSpec is one frozen resource budget and the unit it is counted in.
 type BudgetSpec struct {

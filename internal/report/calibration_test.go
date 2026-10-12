@@ -78,6 +78,7 @@ func calibrationInput(t *testing.T) CalibrationInput {
 		Exclusions: gitlog.Diagnostics{
 			{Scope: gitlog.EventScope, Reason: gitlog.RootEventReason}: 1,
 		},
+		Budgets:     frozenBudgetRecords(),
 		Limitations: []string{"sha1_only", "linux_amd64_only"},
 	}
 }

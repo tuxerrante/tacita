@@ -14,6 +14,7 @@ const (
 	maxReportRows  = 100_000
 	maxReportBytes = 64 << 20
 	maxEvidence    = 20
+	maxDisplayed   = 10
 )
 
 // Encode validates report and renders its canonical bytes: one minified object
@@ -40,7 +41,7 @@ func encode(report Report, rowLimit int, byteLimit int) ([]byte, error) {
 	}
 	encoded = append(encoded, '\n')
 	if len(encoded) > byteLimit {
-		return nil, &LimitError{Code: "budget_report_bytes", Observed: int64(len(encoded)), Limit: int64(byteLimit)}
+		return nil, &LimitError{Code: codeReportBytes, Observed: int64(len(encoded)), Limit: int64(byteLimit)}
 	}
 
 	return encoded, nil
@@ -50,6 +51,9 @@ func encode(report Report, rowLimit int, byteLimit int) ([]byte, error) {
 // non-canonical ordering or formatting, and trailing data are errors, so a
 // decoded report re-encodes to exactly the input.
 func Decode(data []byte) (Report, error) {
+	if len(data) > maxReportBytes {
+		return Report{}, &LimitError{Code: codeReportBytes, Observed: int64(len(data)), Limit: maxReportBytes}
+	}
 	var report Report
 	if err := strictUnmarshal(data, &report); err != nil {
 		return Report{}, err
@@ -142,7 +146,6 @@ func nonNil[T any](values []T) []T {
 func validate(report Report) error {
 	checks := []func(Report) error{
 		validateHeader,
-		validateShape,
 		validateConfigurations,
 		validateBudgets,
 		validatePartitions,
@@ -153,6 +156,7 @@ func validate(report Report) error {
 		validateMetricRecords,
 		validateGates,
 		validateLimitations,
+		validateShape,
 	}
 	for _, check := range checks {
 		if err := check(report); err != nil {
@@ -237,7 +241,79 @@ func validateShape(report Report) error {
 		}
 	}
 
+	budgets := make([]string, len(report.Budgets))
+	for index, budget := range report.Budgets {
+		budgets[index] = budget.ID
+	}
+	if !slices.Equal(budgets, budgetIDs()) {
+		return invalid("complete calibration budgets %v, want the frozen table", budgets)
+	}
+	if len(report.Exclusions) != len(exclusionPairs) {
+		return invalid("complete calibration holds %d exclusion records, want %d",
+			len(report.Exclusions), len(exclusionPairs))
+	}
+
+	var wantBaselines, wantGates []string
+	wantBaselines = append(wantBaselines, recordKey(nil, baselineNoHistory))
+	wantGates = append(wantGates, recordKey(nil, gateNoHistory))
+	for _, configuration := range report.Configurations {
+		id := configuration.ConfigurationID
+		for _, baseline := range []string{"frequent_consequent", "hash_shuffled", baselineUnweighted} {
+			wantBaselines = append(wantBaselines, recordKey(&id, baseline))
+		}
+		for _, gate := range gateIDs {
+			if gate == gateNoHistory || (gate == gateUnweighted && configuration.SizeWeight == weightUnit) {
+				continue
+			}
+			wantGates = append(wantGates, recordKey(&id, gate))
+		}
+	}
+	gotBaselines := make([]string, len(report.Baselines))
+	for index, baseline := range report.Baselines {
+		gotBaselines[index] = recordKey(baseline.ConfigurationID, baseline.ID)
+	}
+	gotGates := make([]string, len(report.Gates))
+	for index, gate := range report.Gates {
+		gotGates[index] = recordKey(gate.ConfigurationID, gate.ID)
+	}
+	slices.Sort(wantBaselines)
+	slices.Sort(gotBaselines)
+	slices.Sort(wantGates)
+	slices.Sort(gotGates)
+	if !slices.Equal(gotBaselines, wantBaselines) {
+		return invalid("complete calibration baselines are not one per frozen baseline and configuration")
+	}
+	if !slices.Equal(gotGates, wantGates) {
+		return invalid("complete calibration gates are not the frozen development gate set")
+	}
+
 	return nil
+}
+
+// recordKey identifies a baseline or gate record by configuration and ID.
+func recordKey(configurationID *string, id string) string {
+	if configurationID == nil {
+		return "\x00" + id
+	}
+	return *configurationID + "\x00" + id
+}
+
+// budgetIDs lists the frozen budget IDs in order.
+func budgetIDs() []string {
+	ids := make([]string, len(budgetSpecs))
+	for index, spec := range budgetSpecs {
+		ids[index] = spec.ID
+	}
+	return ids
+}
+
+// configurationIDs returns the report's configuration IDs.
+func configurationIDs(report Report) map[string]bool {
+	ids := make(map[string]bool, len(report.Configurations))
+	for _, configuration := range report.Configurations {
+		ids[configuration.ConfigurationID] = true
+	}
+	return ids
 }
 
 // validateConfigurations resolves every record against the frozen grid, so an
@@ -346,7 +422,7 @@ func validatePartitions(report Report) error {
 
 func validateExclusions(report Report) error {
 	for index, exclusion := range report.Exclusions {
-		if !oneOf(exclusionScope, exclusion.Scope) || !oneOf(exclusionReasons, exclusion.Reason) {
+		if !slices.Contains(exclusionPairs, [2]string{exclusion.Scope, exclusion.Reason}) {
 			return invalid("exclusion %s/%s", exclusion.Scope, exclusion.Reason)
 		}
 		if index > 0 {
@@ -361,16 +437,23 @@ func validateExclusions(report Report) error {
 }
 
 func validateCandidates(report Report) error {
+	configurations := configurationIDs(report)
 	for index, candidate := range report.Candidates {
 		if !oneOf(origins, candidate.Origin) {
 			return invalid("candidate origin %q", candidate.Origin)
 		}
+		if !configurations[candidate.ConfigurationID] {
+			return invalid("candidate %d names configuration %q the report does not hold", index, candidate.ConfigurationID)
+		}
+		if err := checkRank(report.Candidates, index); err != nil {
+			return err
+		}
 		if candidate.ID != CandidateID(candidate.Origin, string(candidate.Antecedent), string(candidate.Consequent)) {
 			return invalid("candidate %d id does not match its identity", index)
 		}
-		if candidate.Rank < 1 || candidate.RawSupport > candidate.RawOpportunity {
-			return invalid("candidate %s rank %d support %d opportunity %d",
-				candidate.ID, candidate.Rank, candidate.RawSupport, candidate.RawOpportunity)
+		if candidate.RawSupport > candidate.RawOpportunity {
+			return invalid("candidate %s support %d above opportunity %d",
+				candidate.ID, candidate.RawSupport, candidate.RawOpportunity)
 		}
 		if candidate.Supporting.TotalEvents != candidate.RawSupport ||
 			candidate.Exceptions.TotalEvents != candidate.RawOpportunity-candidate.RawSupport {
@@ -385,6 +468,24 @@ func validateCandidates(report Report) error {
 		if index > 0 && compareCandidates(report.Candidates[index-1], candidate) >= 0 {
 			return invalid("candidates not in strict configuration, partition, rank, and ID order at %d", index)
 		}
+	}
+
+	return nil
+}
+
+// checkRank requires ranks 1 through at most 10, consecutive within each
+// configuration and partition, as the display limit produces them.
+func checkRank(candidates []Candidate, index int) error {
+	candidate := candidates[index]
+	want := 1
+	if index > 0 {
+		previous := candidates[index-1]
+		if previous.ConfigurationID == candidate.ConfigurationID && previous.Partition == candidate.Partition {
+			want = previous.Rank + 1
+		}
+	}
+	if candidate.Rank != want || candidate.Rank > maxDisplayed {
+		return invalid("candidate %d rank %d, want %d within the first %d", index, candidate.Rank, want, maxDisplayed)
 	}
 
 	return nil
@@ -428,9 +529,14 @@ func validateEvidence(evidence Evidence) error {
 }
 
 func validateBaselines(report Report) error {
+	configurations := configurationIDs(report)
 	for index, baseline := range report.Baselines {
 		if !oneOf(baselineIDs, baseline.ID) {
 			return invalid("baseline id %q", baseline.ID)
+		}
+		if (baseline.ID == baselineNoHistory) != (baseline.ConfigurationID == nil) ||
+			(baseline.ConfigurationID != nil && !configurations[*baseline.ConfigurationID]) {
+			return invalid("baseline %q configuration does not match the report", baseline.ID)
 		}
 		if baseline.Outcome != nil && !oneOf(gateOutcomes, *baseline.Outcome) {
 			return invalid("baseline outcome %q", *baseline.Outcome)
@@ -503,14 +609,25 @@ func validateMetricRecords(report Report) error {
 }
 
 func validateGates(report Report) error {
+	configurations := configurationIDs(report)
 	for index, gate := range report.Gates {
-		if !oneOf(gateIDs, gate.ID) || !oneOf(gateOutcomes, gate.Outcome) || !oneOf(operators, gate.Operator) {
-			return invalid("gate %q outcome %q operator %q", gate.ID, gate.Outcome, gate.Operator)
+		requirement, ok := gateRequirements[gate.ID]
+		if !ok || !oneOf(gateOutcomes, gate.Outcome) ||
+			gate.Operator != requirement.operator || float64(gate.Threshold) != requirement.threshold {
+			return invalid("gate %q outcome %q is not the frozen requirement %s %v",
+				gate.ID, gate.Outcome, requirement.operator, requirement.threshold)
+		}
+		if (gate.ID == gateNoHistory) != (gate.ConfigurationID == nil) ||
+			(gate.ConfigurationID != nil && !configurations[*gate.ConfigurationID]) {
+			return invalid("gate %q configuration does not match the report", gate.ID)
 		}
 		if gate.Reason != nil && !oneOf(metricReasons, *gate.Reason) {
 			return invalid("gate reason %q", *gate.Reason)
 		}
 		if err := validateMetrics(gate.Metric); err != nil {
+			return err
+		}
+		if err := validateGateOutcome(gate); err != nil {
 			return err
 		}
 		if index > 0 {
@@ -520,6 +637,32 @@ func validateGates(report Report) error {
 				return invalid("gates not in strict ID and configuration-ID order at %d", index)
 			}
 		}
+	}
+
+	return nil
+}
+
+// validateGateOutcome requires an outcome its metric supports: a passing or
+// failing gate holds a defined metric on the matching side of its threshold
+// and no reason, and an inconclusive gate holds an undefined metric whose
+// reason it repeats.
+func validateGateOutcome(gate Gate) error {
+	if gate.Outcome == outcomeInconclusive {
+		if gate.Metric.Value != nil || gate.Reason == nil || *gate.Reason != *gate.Metric.Reason {
+			return invalid("inconclusive gate %q must repeat its undefined metric's reason", gate.ID)
+		}
+		return nil
+	}
+	if gate.Metric.Value == nil || gate.Reason != nil {
+		return invalid("%s gate %q needs a defined metric and no reason", gate.Outcome, gate.ID)
+	}
+	value, threshold := float64(*gate.Metric.Value), float64(gate.Threshold)
+	satisfied := value >= threshold
+	if gate.Operator == "<=" {
+		satisfied = value <= threshold
+	}
+	if satisfied != (gate.Outcome == outcomePass) {
+		return invalid("gate %q outcome %q contradicts its metric and threshold", gate.ID, gate.Outcome)
 	}
 
 	return nil

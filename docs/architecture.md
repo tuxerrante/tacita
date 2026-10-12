@@ -781,16 +781,21 @@ OUT=<dir>` runs [`reference/run.sh`](../reference/run.sh) in it with four CPUs,
 
 The script builds `tacita` and `tacita-harness` with `CGO_ENABLED=0
 -trimpath`, then the harness runs `tacita calibrate` as a child process twice
-per corpus repository. It measures each
+per corpus repository into an empty output directory, naming every artifact
+after the repository's corpus identity rather than its path. It measures each
 run's elapsed time with the monotonic clock and its peak resident set from the
-child's `ru_maxrss`, kills a child only after the elapsed budget plus a
-five-minute margin, and records both in the run's operational sidecar, so the
-measurement never enters the analytical report. A run that writes no report
-keeps a sidecar with a `null` report digest. The harness then applies the
-selector when every run wrote a report, using the sidecars' elapsed-time and
-memory outcomes as the operational verdict, and writes the lock or the
-selection summary and the evidence index. The memory budget is checked after
-the run from the peak resident set rather than by killing the child.
+child's `ru_maxrss`, and records both in the run's operational sidecar, so the
+measurement never enters the analytical report. While the child runs, the
+harness samples its peak resident set from `/proc/<pid>/status` every 50 ms and
+kills it once it exceeds 2 GiB; it also kills it at the first byte past the
+report or diagnostic output bound, or after the elapsed budget plus a
+five-minute margin. A killed child records 128 plus the signal as its exit
+status. Non-empty diagnostic output is written beside the sidecar, which names
+it in `diagnostic_paths`, and a run that writes no report keeps a sidecar with
+a `null` report digest. The harness then applies the selector when every run
+wrote a report, using the sidecars' exit statuses and elapsed-time and memory
+outcomes as the operational verdict, and writes the lock or the selection
+summary and the evidence index.
 
 ## Reports
 

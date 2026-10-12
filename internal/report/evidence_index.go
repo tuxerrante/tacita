@@ -11,6 +11,9 @@ const (
 	EvidenceSchema = "tacita.evidence/v1"
 	// ExperimentID names the first preregistered experiment.
 	ExperimentID = "tacita-experiment-1"
+	// maxEvidenceBytes bounds an evidence index, which lists a few dozen
+	// digests and outcomes, before it is parsed.
+	maxEvidenceBytes = 1 << 20
 )
 
 // Artifact kinds, in index order.
@@ -136,6 +139,9 @@ func EncodeEvidenceIndex(index EvidenceIndex) ([]byte, error) {
 
 // DecodeEvidenceIndex parses canonical index bytes and verifies the digest.
 func DecodeEvidenceIndex(data []byte) (EvidenceIndex, error) {
+	if len(data) > maxEvidenceBytes {
+		return EvidenceIndex{}, &DecodeError{Detail: "evidence index exceeds its byte budget"}
+	}
 	var index EvidenceIndex
 	if err := strictUnmarshal(data, &index); err != nil {
 		return EvidenceIndex{}, err
@@ -200,19 +206,32 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 			return invalid("evidence artifacts not in strict kind, repository, and run order at %d", index)
 		}
 	}
-	for index, gate := range fields.AnalyticalGates {
-		commit := gate.RepositoryObjectID
-		if corpusPosition(&commit) == len(CalibrationCorpus()) || gate.Run < 1 || !oneOf(gateOutcomes, gate.Outcome) ||
-			(gate.PassingConfigurations != nil && *gate.PassingConfigurations < 0) {
-			return invalid("evidence analytical gate %d", index)
+	reports := artifactKeys(fields.Artifacts, ArtifactAnalyticalReport)
+	sidecars := artifactKeys(fields.Artifacts, ArtifactOperationalSidecar)
+	for _, key := range reports {
+		if !slices.Contains(sidecars, key) {
+			return invalid("evidence report %s run %d has no operational sidecar", key.commit, key.run)
 		}
 	}
+	if len(fields.AnalyticalGates) != len(reports) {
+		return invalid("evidence holds %d analytical gates for %d reports", len(fields.AnalyticalGates), len(reports))
+	}
+	for index, gate := range fields.AnalyticalGates {
+		development := corpusPosition(&gate.RepositoryObjectID) < 2
+		if (artifactKey{commit: gate.RepositoryObjectID, run: gate.Run}) != reports[index] ||
+			!oneOf(gateOutcomes, gate.Outcome) || development != (gate.PassingConfigurations != nil) ||
+			(gate.PassingConfigurations != nil && *gate.PassingConfigurations < 0) {
+			return invalid("evidence analytical gate %d does not match its report", index)
+		}
+	}
+	if len(fields.OperationalGates) != len(sidecars) {
+		return invalid("evidence holds %d operational gates for %d sidecars", len(fields.OperationalGates), len(sidecars))
+	}
 	for index, gate := range fields.OperationalGates {
-		commit := gate.RepositoryObjectID
-		if corpusPosition(&commit) == len(CalibrationCorpus()) || gate.Run < 1 ||
+		if (artifactKey{commit: gate.RepositoryObjectID, run: gate.Run}) != sidecars[index] ||
 			!oneOf([]string{outcomePass, outcomeFail}, gate.ElapsedOutcome) ||
 			!oneOf([]string{outcomePass, outcomeFail}, gate.MemoryOutcome) {
-			return invalid("evidence operational gate %d", index)
+			return invalid("evidence operational gate %d does not match its sidecar", index)
 		}
 	}
 	if len(fields.ProductReviewGates) > 0 {
@@ -242,4 +261,22 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 	}
 
 	return nil
+}
+
+// artifactKey identifies a report or sidecar artifact by repository and run.
+type artifactKey struct {
+	commit string
+	run    int
+}
+
+// artifactKeys lists the repository and run of every artifact of kind, in
+// index order.
+func artifactKeys(artifacts []Artifact, kind string) []artifactKey {
+	var keys []artifactKey
+	for _, artifact := range artifacts {
+		if artifact.Kind == kind {
+			keys = append(keys, artifactKey{commit: *artifact.RepositoryObjectID, run: *artifact.Run})
+		}
+	}
+	return keys
 }

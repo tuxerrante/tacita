@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tuxerrante/tacita/internal/report"
 )
@@ -27,7 +29,8 @@ func TestRunRequiresEveryFlag(t *testing.T) {
 }
 
 func TestLimitedBufferStopsAtItsLimit(t *testing.T) {
-	buffer := &limitedBuffer{limit: 4}
+	stops := 0
+	buffer := &limitedBuffer{limit: 4, stop: func() { stops++ }}
 
 	n, err := buffer.Write([]byte("abc"))
 	if n != 3 || err != nil || buffer.overflowed {
@@ -36,6 +39,95 @@ func TestLimitedBufferStopsAtItsLimit(t *testing.T) {
 	n, err = buffer.Write([]byte("def"))
 	if n != 1 || err != nil || !buffer.overflowed || buffer.String() != "abcd" {
 		t.Errorf("Write(def) = %d, %v, overflowed %t, buffer %q", n, err, buffer.overflowed, buffer.String())
+	}
+	if _, _ = buffer.Write([]byte("g")); stops != 1 {
+		t.Errorf("stop called %d times, want once at the first overflow", stops)
+	}
+}
+
+func TestHighWaterMark(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "status")
+	if err := os.WriteFile(path, []byte("Name:\ttacita\nVmHWM:\t  2048 kB\nVmRSS:\t 1024 kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if peak, ok := highWaterMark(path); !ok || peak != 2048*1024 {
+		t.Errorf("highWaterMark() = %d, %t, want %d", peak, ok, 2048*1024)
+	}
+	if _, ok := highWaterMark(filepath.Join(t.TempDir(), "missing")); ok {
+		t.Error("highWaterMark(missing) reported a value")
+	}
+	if err := os.WriteFile(path, []byte("VmHWM:\tlots kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := highWaterMark(path); ok {
+		t.Error("highWaterMark(malformed) reported a value")
+	}
+}
+
+func TestRunWatchingMemoryKillsAChildOverItsLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sleep", "30")
+	stopped := false
+	stop := func() { stopped = true; cancel() }
+
+	start := time.Now()
+	err := runWatchingMemory(cmd, stop, 1)
+
+	if !stopped || err == nil || time.Since(start) > 10*time.Second {
+		t.Fatalf("runWatchingMemory(limit 1 byte) = %v after %s, stopped %t; want the child killed", err, time.Since(start), stopped)
+	}
+	if got := exitStatus(cmd.ProcessState); got != 128+9 {
+		t.Errorf("exit status = %d, want 137 for SIGKILL", got)
+	}
+
+	small := exec.CommandContext(t.Context(), "sh", "-c", "sleep 0.2")
+	if err := runWatchingMemory(small, func() { t.Error("a child within its limit was stopped") }, 1<<40); err != nil {
+		t.Errorf("runWatchingMemory(within limit) error = %v", err)
+	}
+	if err := runWatchingMemory(exec.CommandContext(t.Context(), filepath.Join(t.TempDir(), "missing")), func() {}, 1); err == nil {
+		t.Error("runWatchingMemory(missing binary) succeeded")
+	}
+}
+
+func TestHarnessNamesArtifactsByCorpusIdentity(t *testing.T) {
+	dir := t.TempDir()
+	tacita := fakeTacita(t, dir, "echo refused >&2; exit 1")
+	out := filepath.Join(dir, "out")
+	args := []string{
+		"--tacita", tacita, "--runner", "test runner", "--out", out,
+		"--golang-tools", "/a/repo.git", "--kubernetes", "/b/repo.git",
+		"--go-starter", "/c/repo.git", "--proficiency", "/d/repo.git",
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := realMain(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("realMain() = %d, stderr %q", code, stderr.String())
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecars := 0
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".operation.json") {
+			sidecars++
+		}
+	}
+	if sidecars != 8 {
+		t.Errorf("%d sidecars written for eight runs sharing one basename", sidecars)
+	}
+}
+
+func TestHarnessRefusesANonEmptyOutputDirectory(t *testing.T) {
+	out := t.TempDir()
+	if err := os.WriteFile(filepath.Join(out, "development-lock.json"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := realMain(harnessArgs("/bin/true", out), &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "not empty") {
+		t.Errorf("realMain(non-empty out) = %d, stderr %q", code, stderr.String())
 	}
 }
 
@@ -132,15 +224,16 @@ func TestHarnessRecordsFailedRuns(t *testing.T) {
 	if len(index.Artifacts) != 16 || index.Lanes[0].Outcome != "fail" || index.ExperimentOutcome != "fail" {
 		t.Errorf("index = %d artifacts, lanes %+v, experiment %s", len(index.Artifacts), index.Lanes, index.ExperimentOutcome)
 	}
-	sidecar, err := os.ReadFile(filepath.Join(out, "tools.git.2.operation.json"))
+	sidecar, err := os.ReadFile(filepath.Join(out, "golang-tools.2.operation.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	operation, err := report.DecodeOperation(sidecar)
-	if err != nil || operation.ProcessExitStatus != 0 || operation.ReportDigest == nil || operation.PeakResidentBytes <= 0 {
+	if err != nil || operation.ProcessExitStatus != 0 || operation.ReportDigest == nil || operation.PeakResidentBytes <= 0 ||
+		operation.DiagnosticPaths == nil || (*operation.DiagnosticPaths)[0] != "golang-tools.2.stderr.txt" {
 		t.Errorf("sidecar = %+v, %v", operation, err)
 	}
-	if diagnostic, err := os.ReadFile(filepath.Join(out, "kubernetes.git.1.stderr.txt")); err != nil || string(diagnostic) != "diagnostic\n" {
+	if diagnostic, err := os.ReadFile(filepath.Join(out, "kubernetes.1.stderr.txt")); err != nil || string(diagnostic) != "diagnostic\n" {
 		t.Errorf("stderr file = %q, %v", diagnostic, err)
 	}
 	if _, err := os.Stat(filepath.Join(out, "selection.txt")); err != nil {
@@ -172,7 +265,7 @@ func TestHarnessRecordsRunsWithoutReports(t *testing.T) {
 	if len(index.Artifacts) != 8 || *index.Lanes[0].Reason != report.LaneReportNotComplete {
 		t.Errorf("index = %d artifacts, lane %+v", len(index.Artifacts), index.Lanes[0])
 	}
-	if _, err := os.Stat(filepath.Join(out, "tools.git.1.report.json")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(out, "golang-tools.1.report.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("a report was written for a run that produced none: %v", err)
 	}
 }

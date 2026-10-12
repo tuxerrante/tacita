@@ -42,6 +42,10 @@ func BuildEvidence(input EvidenceInput) (EvidenceIndex, error) {
 
 	for _, run := range input.Runs {
 		commit, number := run.Repository.Commit, run.Run
+		if (run.Report == nil) != (run.Operation.ReportDigest == nil) ||
+			(run.Report != nil && *run.Operation.ReportDigest != Digest(run.Report)) {
+			return EvidenceIndex{}, invalid("%s run %d sidecar does not describe its report", run.Repository.Name, number)
+		}
 		sidecar, err := EncodeOperation(run.Operation)
 		if err != nil {
 			return EvidenceIndex{}, fmt.Errorf("encoding %s run %d sidecar: %w", run.Repository.Name, number, err)
@@ -79,13 +83,18 @@ func BuildEvidence(input EvidenceInput) (EvidenceIndex, error) {
 }
 
 // analyticalGate summarizes one report: how many configurations pass every
-// gate of a development report, or a control report's control outcome.
+// gate of a development report, zero when the report is not complete, or a
+// control report's control outcome with a null count.
 func analyticalGate(run RunRecord) (AnalyticalGate, error) {
-	report, err := Decode(run.Report)
+	report, err := decodeRole(run.Report, run.Repository)
 	if err != nil {
 		return AnalyticalGate{}, fmt.Errorf("decoding %s run %d report: %w", run.Repository.Name, run.Run, err)
 	}
 	gate := AnalyticalGate{RepositoryObjectID: run.Repository.Commit, Run: run.Run, Outcome: outcomeFail}
+	if run.Repository.Role == RoleDevelopment {
+		none := 0
+		gate.PassingConfigurations = &none
+	}
 	if report.Status != statusComplete {
 		return gate, nil
 	}

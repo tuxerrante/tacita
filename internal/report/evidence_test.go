@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"errors"
 	"slices"
 	"strings"
@@ -216,13 +217,39 @@ func TestBuildEvidenceRecordsLaneFailuresAndMissingReports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gate := index.AnalyticalGates[0]; gate.Outcome != outcomeFail || gate.PassingConfigurations != nil {
+	if gate := index.AnalyticalGates[0]; gate.Outcome != outcomeFail || gate.PassingConfigurations == nil || *gate.PassingConfigurations != 0 {
 		t.Errorf("failed report gate = %+v", gate)
 	}
 
 	runs[0].Report = []byte("{}\n")
+	runs[0].Operation = operationFor(t, runs[0].Report, 1, 1, 0)
 	if _, err := BuildEvidence(EvidenceInput{Runs: runs}); !errors.Is(err, ErrDecode) {
 		t.Errorf("BuildEvidence(malformed report) error = %v, want ErrDecode", err)
+	}
+}
+
+func TestBuildEvidenceTiesSidecarsAndReportsToTheirRuns(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	input := selectionInput(t, passing, passing)
+	tests := map[string]func([]RunRecord){
+		"a sidecar for another report": func(runs []RunRecord) {
+			runs[0].Operation = operationFor(t, runs[2].Report, 1, 1, 0)
+		},
+		"a report without a sidecar digest": func(runs []RunRecord) {
+			runs[0].Operation = operationFor(t, nil, 1, 1, 0)
+		},
+		"a sidecar digest without a report": func(runs []RunRecord) { runs[0].Report = nil },
+		"a report of another repository": func(runs []RunRecord) {
+			runs[0].Report = runs[2].Report
+			runs[0].Operation = operationFor(t, runs[2].Report, 1, 1, 0)
+		},
+	}
+	for name, mutate := range tests {
+		runs := recordedRuns(t, input)
+		mutate(runs)
+		if _, err := BuildEvidence(EvidenceInput{Runs: runs}); err == nil {
+			t.Errorf("%s: BuildEvidence() succeeded", name)
+		}
 	}
 }
 
@@ -250,23 +277,38 @@ func TestEvidenceIndexRejectsInvalidContents(t *testing.T) {
 	unknown := strings.Repeat("9", 40)
 	run := 0
 	tests := map[string]func(*EvidenceFields){
-		"schema":                func(f *EvidenceFields) { f.Schema = "tacita.evidence/v2" },
-		"experiment":            func(f *EvidenceFields) { f.ExperimentID = "other" },
-		"artifact kind":         func(f *EvidenceFields) { f.Artifacts[0].Kind = "photo" },
-		"artifact digest":       func(f *EvidenceFields) { f.Artifacts[0].Digest = "x" },
-		"artifact repository":   func(f *EvidenceFields) { f.Artifacts[0].RepositoryObjectID = &unknown },
-		"artifact run":          func(f *EvidenceFields) { f.Artifacts[0].Run = &run },
-		"lock with a run":       func(f *EvidenceFields) { f.Artifacts[0].Kind = ArtifactDevelopmentLock },
-		"artifact order":        func(f *EvidenceFields) { f.Artifacts[0], f.Artifacts[1] = f.Artifacts[1], f.Artifacts[0] },
-		"analytical outcome":    func(f *EvidenceFields) { f.AnalyticalGates[0].Outcome = "great" },
-		"analytical repository": func(f *EvidenceFields) { f.AnalyticalGates[0].RepositoryObjectID = unknown },
-		"operational outcome":   func(f *EvidenceFields) { f.OperationalGates[0].MemoryOutcome = "inconclusive" },
-		"operational run":       func(f *EvidenceFields) { f.OperationalGates[0].Run = 0 },
-		"product review":        func(f *EvidenceFields) { f.ProductReviewGates = []ProductReviewGate{{}} },
-		"missing lane":          func(f *EvidenceFields) { f.Lanes = f.Lanes[:1] },
-		"lane reason":           func(f *EvidenceFields) { f.Lanes[0].Reason = text("tired") },
-		"passing lane reason":   func(f *EvidenceFields) { f.Lanes[0].Outcome = outcomePass },
-		"experiment outcome":    func(f *EvidenceFields) { f.ExperimentOutcome = outcomePass },
+		"schema":                       func(f *EvidenceFields) { f.Schema = "tacita.evidence/v2" },
+		"experiment":                   func(f *EvidenceFields) { f.ExperimentID = "other" },
+		"artifact kind":                func(f *EvidenceFields) { f.Artifacts[0].Kind = "photo" },
+		"artifact digest":              func(f *EvidenceFields) { f.Artifacts[0].Digest = "x" },
+		"artifact repository":          func(f *EvidenceFields) { f.Artifacts[0].RepositoryObjectID = &unknown },
+		"artifact run":                 func(f *EvidenceFields) { f.Artifacts[0].Run = &run },
+		"lock with a run":              func(f *EvidenceFields) { f.Artifacts[0].Kind = ArtifactDevelopmentLock },
+		"artifact order":               func(f *EvidenceFields) { f.Artifacts[0], f.Artifacts[1] = f.Artifacts[1], f.Artifacts[0] },
+		"analytical outcome":           func(f *EvidenceFields) { f.AnalyticalGates[0].Outcome = "great" },
+		"analytical repository":        func(f *EvidenceFields) { f.AnalyticalGates[0].RepositoryObjectID = unknown },
+		"operational outcome":          func(f *EvidenceFields) { f.OperationalGates[0].MemoryOutcome = "inconclusive" },
+		"operational run":              func(f *EvidenceFields) { f.OperationalGates[0].Run = 0 },
+		"product review":               func(f *EvidenceFields) { f.ProductReviewGates = []ProductReviewGate{{}} },
+		"missing lane":                 func(f *EvidenceFields) { f.Lanes = f.Lanes[:1] },
+		"lane reason":                  func(f *EvidenceFields) { f.Lanes[0].Reason = text("tired") },
+		"passing lane reason":          func(f *EvidenceFields) { f.Lanes[0].Outcome = outcomePass },
+		"experiment outcome":           func(f *EvidenceFields) { f.ExperimentOutcome = outcomePass },
+		"a missing analytical gate":    func(f *EvidenceFields) { f.AnalyticalGates = f.AnalyticalGates[1:] },
+		"a duplicated analytical gate": func(f *EvidenceFields) { f.AnalyticalGates[1] = f.AnalyticalGates[0] },
+		"a control with a count": func(f *EvidenceFields) {
+			count := 0
+			f.AnalyticalGates[4].PassingConfigurations = &count
+		},
+		"a development report without a count": func(f *EvidenceFields) { f.AnalyticalGates[0].PassingConfigurations = nil },
+		"a missing operational gate":           func(f *EvidenceFields) { f.OperationalGates = f.OperationalGates[1:] },
+		"an operational gate for a third run":  func(f *EvidenceFields) { f.OperationalGates[1].Run = 3 },
+		"a report without a sidecar": func(f *EvidenceFields) {
+			f.Artifacts = slices.DeleteFunc(f.Artifacts, func(a Artifact) bool {
+				return a.Kind == ArtifactOperationalSidecar && *a.Run == 1 && *a.RepositoryObjectID == GolangTools().Commit
+			})
+			f.OperationalGates = f.OperationalGates[1:]
+		},
 	}
 	for name, mutate := range tests {
 		fields := clone()
@@ -317,4 +359,115 @@ func TestSelectionSummary(t *testing.T) {
 	if got := selection.Summary(); got != want {
 		t.Errorf("Summary() =\n%s\nwant\n%s", got, want)
 	}
+}
+
+func TestDecodeEvidenceIndexRejectsOversizedInput(t *testing.T) {
+	if _, err := DecodeEvidenceIndex(make([]byte, maxEvidenceBytes+1)); !errors.Is(err, ErrDecode) {
+		t.Errorf("DecodeEvidenceIndex(oversized) error = %v, want ErrDecode", err)
+	}
+}
+
+// FuzzDecodeEvidenceIndex asserts that every accepted evidence index
+// re-encodes to exactly the bytes that were decoded.
+func FuzzDecodeEvidenceIndex(f *testing.F) {
+	report := failedReport()
+	report.Repository.ResolvedCommit = GolangTools().Commit
+	encodedReport, err := Encode(report)
+	if err != nil {
+		f.Fatal(err)
+	}
+	var runs []RunRecord
+	for number := 1; number <= 2; number++ {
+		digest := Digest(encodedReport)
+		operation, err := NewOperation(OperationFields{
+			Schema: OperationSchema, ReportDigest: &digest, ElapsedDurationNS: 1, PeakResidentBytes: 1, ReferenceRunner: "fuzz",
+		})
+		if err != nil {
+			f.Fatal(err)
+		}
+		runs = append(runs, RunRecord{Repository: GolangTools(), Run: number, Report: encodedReport, Operation: operation})
+	}
+	index, err := BuildEvidence(EvidenceInput{Runs: runs})
+	if err != nil {
+		f.Fatal(err)
+	}
+	encoded, err := EncodeEvidenceIndex(index)
+	if err != nil {
+		f.Fatal(err)
+	}
+	text := string(encoded)
+	for _, seed := range []string{
+		text,
+		strings.Replace(text, `"run":1`, `"run":3`, 1),
+		strings.Replace(text, `"outcome":"fail"`, `"outcome":"pass"`, 1),
+		strings.Replace(text, `"passing_configurations":0`, `"passing_configurations":null`, 1),
+		strings.Replace(text, `"elapsed_outcome":"pass"`, `"elapsed_outcome":"inconclusive"`, 1),
+		strings.Replace(text, `"experiment_outcome":"fail"`, `"experiment_outcome":"pass"`, 1),
+		strings.Replace(text, `"product_review_gates":[]`, `"product_review_gates":[{}]`, 1),
+		strings.Replace(text, `,"artifacts"`, `, "artifacts"`, 1),
+		strings.Replace(text, `"schema"`, `"x":1,"schema"`, 1),
+		strings.TrimSuffix(text, "\n"),
+		"",
+	} {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		decoded, err := DecodeEvidenceIndex(data)
+		if err != nil {
+			return
+		}
+		again, err := EncodeEvidenceIndex(decoded)
+		if err != nil {
+			t.Fatalf("EncodeEvidenceIndex(decoded) error = %v", err)
+		}
+		if !bytes.Equal(again, data) {
+			t.Fatalf("accepted index is not canonical:\n%q\n%q", data, again)
+		}
+	})
+}
+
+// FuzzDecodeOperation asserts that every accepted sidecar re-encodes to
+// exactly the bytes that were decoded.
+func FuzzDecodeOperation(f *testing.F) {
+	digest := strings.Repeat("a", 64)
+	paths := []string{"golang-tools.1.stderr.txt"}
+	for _, fields := range []OperationFields{
+		{Schema: OperationSchema, ReportDigest: &digest, ElapsedDurationNS: 1, PeakResidentBytes: 2, ReferenceRunner: "fuzz"},
+		{Schema: OperationSchema, ProcessExitStatus: 137, ReferenceRunner: "fuzz", DiagnosticPaths: &paths},
+	} {
+		operation, err := NewOperation(fields)
+		if err != nil {
+			f.Fatal(err)
+		}
+		encoded, err := EncodeOperation(operation)
+		if err != nil {
+			f.Fatal(err)
+		}
+		text := string(encoded)
+		for _, seed := range []string{
+			text,
+			strings.Replace(text, `"elapsed_duration_ns":1`, `"elapsed_duration_ns":-1`, 1),
+			strings.Replace(text, `"reference_runner":"fuzz"`, `"reference_runner":""`, 1),
+			strings.Replace(text, `"sidecar_digest":"`, `"sidecar_digest":"0`, 1),
+			strings.Replace(text, `"schema"`, `"x":1,"schema"`, 1),
+			strings.TrimSuffix(text, "\n"),
+		} {
+			f.Add([]byte(seed))
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		decoded, err := DecodeOperation(data)
+		if err != nil {
+			return
+		}
+		again, err := EncodeOperation(decoded)
+		if err != nil {
+			t.Fatalf("EncodeOperation(decoded) error = %v", err)
+		}
+		if !bytes.Equal(again, data) {
+			t.Fatalf("accepted sidecar is not canonical:\n%q\n%q", data, again)
+		}
+	})
 }

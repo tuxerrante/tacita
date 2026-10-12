@@ -19,6 +19,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -125,6 +127,13 @@ func record(ctx context.Context, tacita string, runner string, out string, plan 
 	if err := os.MkdirAll(out, 0o750); err != nil {
 		return "", fmt.Errorf("creating output directory: %w", err)
 	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		return "", fmt.Errorf("reading output directory: %w", err)
+	}
+	if len(entries) > 0 {
+		return "", fmt.Errorf("output directory %s is not empty; a bundle must not mix runs", out)
+	}
 
 	records := make([]report.RunRecord, 0, len(plan))
 	var summary bytes.Buffer
@@ -184,7 +193,8 @@ func record(ctx context.Context, tacita string, runner string, out string, plan 
 
 // calibrateOnce runs one calibration as a child process and records its
 // report and operational sidecar. The child's own elapsed budget fires first;
-// the harness kills it only after a margin.
+// the harness kills it only after a margin, as soon as its output overflows a
+// bound, or as soon as its peak resident set exceeds the frozen memory budget.
 func calibrateOnce(
 	ctx context.Context,
 	tacita string,
@@ -195,22 +205,19 @@ func calibrateOnce(
 	ctx, cancel := context.WithTimeout(ctx, report.ElapsedLimit+killMargin)
 	defer cancel()
 
-	stdout := &limitedBuffer{limit: maxStdout}
-	stderr := &limitedBuffer{limit: maxStderr}
+	stdout := &limitedBuffer{limit: maxStdout, stop: cancel}
+	stderr := &limitedBuffer{limit: maxStderr, stop: cancel}
 	cmd := exec.CommandContext(ctx, tacita, "calibrate", "--revision", planned.repository.Commit, planned.path) //nolint:gosec // operator-named binary
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 
 	start := time.Now()
-	runErr := cmd.Run()
+	runErr := runWatchingMemory(cmd, cancel, report.PeakMemoryLimit)
 	elapsed := time.Since(start)
 	if cmd.ProcessState == nil {
 		return report.RunRecord{}, fmt.Errorf("starting %s: %w", tacita, runErr)
 	}
 
-	name := fmt.Sprintf("%s.%d", filepath.Base(planned.path), planned.run)
-	if err := writeFile(out, name+".stderr.txt", stderr.Bytes()); err != nil {
-		return report.RunRecord{}, err
-	}
+	name := fmt.Sprintf("%s.%d", flagName(planned.repository), planned.run)
 	record := report.RunRecord{Repository: planned.repository, Run: planned.run}
 	fields := report.OperationFields{
 		Schema:            report.OperationSchema,
@@ -218,6 +225,13 @@ func calibrateOnce(
 		PeakResidentBytes: peakResidentBytes(cmd.ProcessState),
 		ProcessExitStatus: exitStatus(cmd.ProcessState),
 		ReferenceRunner:   runner,
+	}
+	if stderr.Len() > 0 {
+		diagnostic := name + ".stderr.txt"
+		if err := writeFile(out, diagnostic, stderr.Bytes()); err != nil {
+			return report.RunRecord{}, err
+		}
+		fields.DiagnosticPaths = &[]string{diagnostic}
 	}
 	if runErr == nil && !stdout.overflowed && stdout.Len() > 0 {
 		record.Report = bytes.Clone(stdout.Bytes())
@@ -241,6 +255,57 @@ func calibrateOnce(
 	record.Operation = operation
 
 	return record, nil
+}
+
+// memoryPoll is how often the harness samples the child's peak resident set.
+const memoryPoll = 50 * time.Millisecond
+
+// runWatchingMemory starts cmd and waits for it while sampling the child's
+// peak resident set from /proc. When the peak exceeds limit, the frozen
+// memory budget, it calls stop, which kills the child through its context. One
+// goroutine waits for the child; it ends when the child exits, and its result
+// is always received before returning.
+func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	status := filepath.Join("/proc", strconv.Itoa(cmd.Process.Pid), "status")
+	ticker := time.NewTicker(memoryPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-ticker.C:
+			if peak, ok := highWaterMark(status); ok && peak > limit {
+				stop()
+			}
+		}
+	}
+}
+
+// highWaterMark reads VmHWM, the peak resident set, from a /proc status file.
+func highWaterMark(path string) (int64, bool) {
+	data, err := os.ReadFile(path) //nolint:gosec // a /proc path built from the child's PID
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		value, found := strings.CutPrefix(line, "VmHWM:")
+		if !found {
+			continue
+		}
+		kibibytes, err := strconv.ParseInt(strings.TrimSuffix(strings.TrimSpace(value), " kB"), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return kibibytes * 1024, true
+	}
+
+	return 0, false
 }
 
 // selectFrom applies the selector when every run wrote a report. It reports
@@ -303,17 +368,22 @@ func writeFile(directory string, name string, data []byte) error {
 	return nil
 }
 
-// limitedBuffer keeps at most limit bytes and records an overflow instead of
-// growing past it.
+// limitedBuffer keeps at most limit bytes. The first write past the limit
+// records the overflow and calls stop, so the child is killed at once instead
+// of running on with its output discarded.
 type limitedBuffer struct {
 	bytes.Buffer
 	limit      int
 	overflowed bool
+	stop       func()
 }
 
 func (b *limitedBuffer) Write(data []byte) (int, error) {
 	room := b.limit - b.Len()
 	if len(data) > room {
+		if !b.overflowed && b.stop != nil {
+			b.stop()
+		}
 		b.overflowed = true
 		data = data[:max(room, 0)]
 	}

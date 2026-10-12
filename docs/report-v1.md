@@ -491,6 +491,10 @@ The field names are `schema`, `experiment_id` (`tacita-experiment-1`),
   is `inconclusive` with `not_run` until Milestone 4;
 - `experiment_outcome` is the lanes' conjunction.
 
+Sidecars cover every corpus repository's runs 1 and 2. Until a blinded review
+exists, the profile lane is `inconclusive` with `not_run`, and the inferred
+lane fails, with a lane failure reason, exactly when the index holds no lock.
+
 The evidence-index digest is SHA-256 over the preceding canonical fields.
 The index is canonical for a recorded run, but two executions may have
 different sidecar digests and therefore different evidence-index bytes. The
@@ -514,7 +518,7 @@ order:
 
 `report_digest` is `null` when the run wrote no report.
 `process_exit_status` is the exit code, or 128 plus the signal that killed the
-run. `reference_runner` describes the runner and is never empty.
+run, and never exceeds 255. `reference_runner` describes the runner and is never empty.
 
 The sidecar is size-bounded, must never contain source blobs or unredacted Git
 stderr, and never rewrites canonical report bytes. It records the runtime and

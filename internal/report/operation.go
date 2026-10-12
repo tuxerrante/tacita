@@ -14,6 +14,9 @@ const (
 	// peak resident memory budgets the harness enforces.
 	ElapsedLimit    = 20 * time.Minute
 	PeakMemoryLimit = 2 << 30
+	// maxExitStatus is the largest status a Linux process can report: an
+	// 8-bit exit code or 128 plus a signal number.
+	maxExitStatus = 255
 )
 
 // Operation is the canonical tacita.operation/v1 sidecar: the embedded
@@ -115,8 +118,9 @@ func validateOperation(fields OperationFields) error {
 		return invalid("sidecar schema %q", fields.Schema)
 	case fields.ReportDigest != nil && !isDigest(*fields.ReportDigest):
 		return invalid("sidecar report_digest %q", *fields.ReportDigest)
-	case fields.ElapsedDurationNS < 0 || fields.PeakResidentBytes < 0 || fields.ProcessExitStatus < 0:
-		return invalid("sidecar observations must be non-negative")
+	case fields.ElapsedDurationNS < 0 || fields.PeakResidentBytes < 0 ||
+		fields.ProcessExitStatus < 0 || fields.ProcessExitStatus > maxExitStatus:
+		return invalid("sidecar observations must be non-negative and the exit status at most %d", maxExitStatus)
 	case fields.ReferenceRunner == "":
 		return invalid("sidecar reference_runner is empty")
 	}

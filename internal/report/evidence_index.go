@@ -195,8 +195,9 @@ func optionalRun(run *int) int {
 
 // validateEvidenceIndex requires the frozen schema and experiment, known
 // artifact kinds in index order with valid digests and calibration-corpus
-// repositories, known outcomes, both lanes, and an experiment outcome that is
-// the lanes' conjunction.
+// repositories, a sidecar for both runs of every corpus repository, known
+// outcomes, both lanes in their pre-review states, and an experiment outcome
+// that is the lanes' conjunction.
 func validateEvidenceIndex(fields EvidenceFields) error {
 	if fields.Schema != EvidenceSchema || fields.ExperimentID != ExperimentID {
 		return invalid("evidence schema %q experiment %q", fields.Schema, fields.ExperimentID)
@@ -215,10 +216,14 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 	}
 	reports := artifactKeys(fields.Artifacts, ArtifactAnalyticalReport)
 	sidecars := artifactKeys(fields.Artifacts, ArtifactOperationalSidecar)
-	for _, key := range reports {
-		if !slices.Contains(sidecars, key) {
-			return invalid("evidence report %s run %d has no operational sidecar", key.commit, key.run)
+	var planned []artifactKey
+	for _, repository := range CalibrationCorpus() {
+		for run := 1; run <= runsPerRepository; run++ {
+			planned = append(planned, artifactKey{commit: repository.Commit, run: run})
 		}
+	}
+	if !slices.Equal(sidecars, planned) {
+		return invalid("evidence sidecars do not cover every corpus repository's two runs")
 	}
 	if len(fields.AnalyticalGates) != len(reports) {
 		return invalid("evidence holds %d analytical gates for %d reports", len(fields.AnalyticalGates), len(reports))
@@ -265,6 +270,9 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 	if !slices.Equal(lanes, []string{LaneInferred, LaneProfile}) {
 		return invalid("evidence lanes %v, want [inferred profile]", lanes)
 	}
+	if err := validateLaneStates(fields); err != nil {
+		return err
+	}
 	if fields.ExperimentOutcome != outcome {
 		return invalid("experiment outcome %q is not the lanes' conjunction %q", fields.ExperimentOutcome, outcome)
 	}
@@ -288,4 +296,41 @@ func artifactKeys(artifacts []Artifact, kind string) []artifactKey {
 		}
 	}
 	return keys
+}
+
+// inferredFailureReasons are the reasons the inferred lane can fail before a
+// lock exists.
+var inferredFailureReasons = []string{
+	ReasonNoSelectableConfiguration, LaneControlFailed, LaneNondeterministicReport,
+	LaneOperationalLimit, LaneReportNotComplete,
+}
+
+// validateLaneStates pins the lanes to what a calibration index can record
+// before any review: the profile lane has not run, and the inferred lane
+// fails without a lock and is inconclusive, awaiting the holdout, with one.
+func validateLaneStates(fields EvidenceFields) error {
+	profile := fields.Lanes[1]
+	if profile.Outcome != outcomeInconclusive || reasonOf(profile) != ReasonLaneNotRun {
+		return invalid("evidence profile lane must be inconclusive with %s before Milestone 4", ReasonLaneNotRun)
+	}
+
+	inferred := fields.Lanes[0]
+	locked := slices.ContainsFunc(fields.Artifacts, func(artifact Artifact) bool {
+		return artifact.Kind == ArtifactDevelopmentLock
+	})
+	switch {
+	case locked && (inferred.Outcome != outcomeInconclusive || reasonOf(inferred) != ReasonHoldoutNotRun):
+		return invalid("evidence inferred lane with a lock must be inconclusive with %s", ReasonHoldoutNotRun)
+	case !locked && (inferred.Outcome != outcomeFail || !slices.Contains(inferredFailureReasons, reasonOf(inferred))):
+		return invalid("evidence inferred lane without a lock must fail with a lane failure reason")
+	}
+
+	return nil
+}
+
+func reasonOf(lane LaneOutcome) string {
+	if lane.Reason == nil {
+		return ""
+	}
+	return *lane.Reason
 }

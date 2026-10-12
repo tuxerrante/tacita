@@ -169,6 +169,7 @@ reference-image: ## Build the frozen linux/amd64 reference image (Go 1.27.0, Git
 reference-run: ## Calibrate the frozen corpus in the reference image; set CORPUS and OUT
 	@if [[ -z "$(CORPUS)" || -z "$(OUT)" ]]; then echo "set CORPUS to the bare clones and OUT to an empty directory" >&2; exit 1; fi
 	docker run --rm --platform linux/amd64 --cpus 4 --memory 8g --network none \
+		--user "$$(id -u):$$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/go-cache -e GOPATH=/tmp/go \
 		-e GOFLAGS=-buildvcs=false -e GOPROXY=off -e REFERENCE_RUNNER \
 		-v "$(CURDIR):/src:ro" -v "$(CORPUS):/corpus:ro" -v "$(OUT):/out" -w /src \
 		"$(REFERENCE_IMAGE)" reference/run.sh

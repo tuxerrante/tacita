@@ -776,7 +776,8 @@ release tarball after its checksum is verified against the published list.
 Git's default build includes its Rust core, so the build stage installs Cargo.
 `make reference-image` builds it, and `make reference-run CORPUS=<dir>
 OUT=<dir>` runs [`reference/run.sh`](../reference/run.sh) in it with four CPUs,
-8 GiB, and no network. `CORPUS` holds the bare clones `tools.git`,
+8 GiB, and no network, as the invoking user so the written artifacts stay
+readable on the host. `CORPUS` holds the bare clones `tools.git`,
 `kubernetes.git`, `go-starter.git`, and `proficiency.git`.
 
 The script builds `tacita` and `tacita-harness` with `CGO_ENABLED=0

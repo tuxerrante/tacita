@@ -66,6 +66,13 @@ func TestOperationRejectsInvalidContents(t *testing.T) {
 		}
 	}
 
+	for exit, accepted := range map[int]bool{maxExitStatus: true, maxExitStatus + 1: false} {
+		_, err := NewOperation(OperationFields{Schema: OperationSchema, ProcessExitStatus: exit, ReferenceRunner: "r"})
+		if (err == nil) != accepted {
+			t.Errorf("NewOperation(exit %d) error = %v", exit, err)
+		}
+	}
+
 	valid := operationFor(t, nil, 1, 1, 0)
 	forged := valid
 	forged.SidecarDigest = strings.Repeat("0", 64)
@@ -325,6 +332,24 @@ func TestEvidenceIndexRejectsInvalidContents(t *testing.T) {
 			})
 			f.OperationalGates = f.OperationalGates[1:]
 		},
+		"a repository without runs": func(f *EvidenceFields) {
+			f.Artifacts = slices.DeleteFunc(f.Artifacts, func(a Artifact) bool {
+				return a.RepositoryObjectID != nil && *a.RepositoryObjectID == Proficiency().Commit
+			})
+			f.AnalyticalGates, f.OperationalGates = f.AnalyticalGates[:6], f.OperationalGates[:6]
+		},
+		"a lock with a failed inferred lane": func(f *EvidenceFields) {
+			f.Artifacts = append([]Artifact{{Kind: ArtifactDevelopmentLock, Digest: strings.Repeat("a", 64)}}, f.Artifacts...)
+		},
+		"an inconclusive inferred lane without a lock": func(f *EvidenceFields) {
+			f.Lanes[0] = LaneOutcome{Lane: LaneInferred, Outcome: outcomeInconclusive, Reason: text(ReasonHoldoutNotRun)}
+			f.ExperimentOutcome = outcomeInconclusive
+		},
+		"an inferred lane failing as not run": func(f *EvidenceFields) { f.Lanes[0].Reason = text(ReasonLaneNotRun) },
+		"a failed profile lane":               func(f *EvidenceFields) { f.Lanes[1].Outcome = outcomeFail },
+		"a profile lane awaiting the holdout": func(f *EvidenceFields) {
+			f.Lanes[1].Reason = text(ReasonHoldoutNotRun)
+		},
 	}
 	for name, mutate := range tests {
 		fields := clone()
@@ -392,16 +417,24 @@ func FuzzDecodeEvidenceIndex(f *testing.F) {
 	if err != nil {
 		f.Fatal(err)
 	}
+	// golang/tools wrote a failed report on both runs and every other
+	// repository exited without one, so the seed holds the full run plan.
 	var runs []RunRecord
-	for number := 1; number <= 2; number++ {
-		digest := Digest(encodedReport)
-		operation, err := NewOperation(OperationFields{
-			Schema: OperationSchema, ReportDigest: &digest, ElapsedDurationNS: 1, PeakResidentBytes: 1, ReferenceRunner: "fuzz",
-		})
-		if err != nil {
-			f.Fatal(err)
+	for _, repository := range CalibrationCorpus() {
+		for number := 1; number <= runsPerRepository; number++ {
+			fields := OperationFields{Schema: OperationSchema, ElapsedDurationNS: 1, PeakResidentBytes: 1, ProcessExitStatus: 1, ReferenceRunner: "fuzz"}
+			record := RunRecord{Repository: repository, Run: number}
+			if repository.Commit == GolangTools().Commit {
+				digest := Digest(encodedReport)
+				fields.ReportDigest, fields.ProcessExitStatus, record.Report = &digest, 0, encodedReport
+			}
+			operation, err := NewOperation(fields)
+			if err != nil {
+				f.Fatal(err)
+			}
+			record.Operation = operation
+			runs = append(runs, record)
 		}
-		runs = append(runs, RunRecord{Repository: GolangTools(), Run: number, Report: encodedReport, Operation: operation})
 	}
 	index, err := BuildEvidence(EvidenceInput{Runs: runs})
 	if err != nil {
@@ -419,6 +452,8 @@ func FuzzDecodeEvidenceIndex(f *testing.F) {
 		strings.Replace(text, `"passing_configurations":0`, `"passing_configurations":null`, 1),
 		strings.Replace(text, `"elapsed_outcome":"pass"`, `"elapsed_outcome":"inconclusive"`, 1),
 		strings.Replace(text, `"experiment_outcome":"fail"`, `"experiment_outcome":"pass"`, 1),
+		strings.Replace(text, `"reason":"report_not_complete"`, `"reason":"holdout_not_run"`, 1),
+		strings.Replace(text, `"reason":"not_run"`, `"reason":"holdout_not_run"`, 1),
 		strings.Replace(text, `"product_review_gates":[]`, `"product_review_gates":[{}]`, 1),
 		strings.Replace(text, `,"artifacts"`, `, "artifacts"`, 1),
 		strings.Replace(text, `"schema"`, `"x":1,"schema"`, 1),

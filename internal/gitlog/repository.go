@@ -21,9 +21,10 @@ import (
 // repository-level completeness mechanisms. It cannot prove that every required
 // object is present, so a missing object is still classified during traversal.
 type Repository struct {
-	target    []string
-	preflight preflight
-	ready     bool
+	target     []string
+	preflight  preflight
+	gitVersion string
+	ready      bool
 }
 
 // Open validates the execution environment, classifies path as a worktree or a
@@ -43,7 +44,8 @@ func Open(ctx context.Context, path string) (*Repository, error) {
 		return nil, fmt.Errorf("resolving repository path: %w", err)
 	}
 
-	if err := validateEnvironment(ctx); err != nil {
+	gitVersion, err := validateEnvironment(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -62,10 +64,17 @@ func Open(ctx context.Context, path string) (*Repository, error) {
 	}
 
 	return &Repository{
-		target:    target,
-		preflight: result,
-		ready:     true,
+		target:     target,
+		preflight:  result,
+		gitVersion: gitVersion,
+		ready:      true,
 	}, nil
+}
+
+// GitVersion returns the version of the Git executable Open validated, as the
+// third field of `git version`, for example "2.55.0".
+func (r *Repository) GitVersion() string {
+	return r.gitVersion
 }
 
 // bind prepends the classified target and the deterministic configuration
@@ -135,9 +144,9 @@ func runTargeted(
 // validateEnvironment checks the process-wide properties that no repository can
 // change. It runs before classification so an unsupported host fails before any
 // repository-controlled path is inspected.
-func validateEnvironment(ctx context.Context) error {
+func validateEnvironment(ctx context.Context) (string, error) {
 	if err := validatePlatform(runtime.GOOS, runtime.GOARCH); err != nil {
-		return err
+		return "", err
 	}
 	return validateGitVersion(ctx)
 }

@@ -447,6 +447,19 @@ This failure-only command does not contribute events or paths. Its output is
 used solely for the conservative incomplete-repository classification described
 in [supported experiment environment](#supported-experiment-environment).
 
+The report's reproducibility record also needs the count of commits reachable
+from the resolved commit, merged branches included. One bounded scalar command
+supplies it after the first-parent walk succeeds:
+
+```text
+git <repository-target> rev-list --count <resolved-object-id>
+```
+
+It reads commit objects only, contributes no event or path, and its output must
+be one positive decimal count without leading zeros followed by one LF. The
+`git version` output that environment validation already reads supplies the
+report's Git version, its third field.
+
 The first command is line-oriented only because every field is a validated
 full hexadecimal object ID. It defines event order, first parent, and event
 kind. Tacita feeds only its first object-ID field from each line to the second

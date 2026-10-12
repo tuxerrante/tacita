@@ -168,15 +168,17 @@ func TestValidatePlatform(t *testing.T) {
 
 func TestParseGitVersion(t *testing.T) {
 	tests := []struct {
-		name      string
-		output    string
-		wantMajor int
-		wantMinor int
-		wantErr   bool
+		name        string
+		output      string
+		wantVersion string
+		wantMajor   int
+		wantMinor   int
+		wantErr     bool
 	}{
-		{name: "release", output: "git version 2.55.0\n", wantMajor: 2, wantMinor: 55},
-		{name: "suffix", output: "git version 2.43.1.fc44\n", wantMajor: 2, wantMinor: 43},
-		{name: "future major", output: "git version 3.0.0\n", wantMajor: 3},
+		{name: "release", output: "git version 2.55.0\n", wantVersion: "2.55.0", wantMajor: 2, wantMinor: 55},
+		{name: "suffix", output: "git version 2.43.1.fc44\n", wantVersion: "2.43.1.fc44", wantMajor: 2, wantMinor: 43},
+		{name: "vendor note", output: "git version 2.54.0 (Apple Git-157)\n", wantVersion: "2.54.0", wantMajor: 2, wantMinor: 54},
+		{name: "future major", output: "git version 3.0.0\n", wantVersion: "3.0.0", wantMajor: 3},
 		{name: "missing minor", output: "git version 2\n", wantErr: true},
 		{name: "unexpected prefix", output: "version 2.55.0\n", wantErr: true},
 		{name: "missing newline", output: "git version 2.55.0", wantErr: true},
@@ -185,7 +187,7 @@ func TestParseGitVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			major, minor, err := parseGitVersion([]byte(tt.output))
+			version, major, minor, err := parseGitVersion([]byte(tt.output))
 			if tt.wantErr {
 				if !errors.Is(err, ErrMalformedGitOutput) {
 					t.Fatalf("parseGitVersion() error = %v, want ErrMalformedGitOutput", err)
@@ -195,11 +197,13 @@ func TestParseGitVersion(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseGitVersion() error = %v", err)
 			}
-			if major != tt.wantMajor || minor != tt.wantMinor {
+			if version != tt.wantVersion || major != tt.wantMajor || minor != tt.wantMinor {
 				t.Errorf(
-					"parseGitVersion() = %d.%d, want %d.%d",
+					"parseGitVersion() = %q %d.%d, want %q %d.%d",
+					version,
 					major,
 					minor,
+					tt.wantVersion,
 					tt.wantMajor,
 					tt.wantMinor,
 				)

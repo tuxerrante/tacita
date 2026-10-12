@@ -83,6 +83,8 @@ Implemented:
 - canonical `tacita.report/v1` calibration reports and the `tacita.grid/v1`
   artifact, with validation, strict canonical decoding, and the report row and
   byte budgets;
+- the Git version and reachable commit count for the report's tool and
+  repository records;
 - `development-selector-v1` over the frozen development and control reports,
   with lane failures for non-deterministic, over-budget, incomplete, or
   control-failing runs, and the canonical `tacita.dev-lock/v1` writer;

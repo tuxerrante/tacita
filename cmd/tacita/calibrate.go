@@ -186,9 +186,27 @@ func buildCalibration(
 	if err != nil {
 		return report.Report{}, err
 	}
-	built.Budgets = observed.budgets(len(events), report.CountRows(built))
+	rows := report.CountRows(built)
+	if err := checkRows(rows); err != nil {
+		return report.Report{}, err
+	}
+	built.Budgets = observed.budgets(len(events), rows)
 
 	return built, nil
+}
+
+// checkRows returns the frozen budget_report_rows failure when a report would
+// exceed the row budget. It runs before the budget records are attached,
+// because a complete report may not record a failing budget, so the breach
+// must surface as the failure code rather than as an invalid complete report.
+func checkRows(rows int) error {
+	for _, spec := range report.FrozenBudgets() {
+		if spec.ID == "report_rows" && int64(rows) > spec.Limit {
+			return &report.LimitError{Code: "budget_report_rows", Observed: int64(rows), Limit: spec.Limit}
+		}
+	}
+
+	return nil
 }
 
 // repositoryRecord describes the chain; the reachable count is filled in once

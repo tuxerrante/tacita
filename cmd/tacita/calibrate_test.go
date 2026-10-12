@@ -234,3 +234,17 @@ func TestFailedReportCoversBudgetsAndUnnamedFailures(t *testing.T) {
 		t.Errorf("failedReport(unnamed) = %d bytes, %v; want the error and no report", len(encoded), err)
 	}
 }
+
+func TestCheckRowsReportsTheFrozenRowBudget(t *testing.T) {
+	if err := checkRows(100_000); err != nil {
+		t.Errorf("checkRows(at the limit) error = %v", err)
+	}
+	err := checkRows(100_001)
+	var limit *report.LimitError
+	if !errors.As(err, &limit) || limit.Code != "budget_report_rows" || limit.Observed != 100_001 || limit.Limit != 100_000 {
+		t.Fatalf("checkRows(over the limit) error = %v", err)
+	}
+	if failure, ok := failureFor(err); !ok || failure.Code != "budget_report_rows" {
+		t.Errorf("failureFor(row breach) = %+v, %t", failure, ok)
+	}
+}

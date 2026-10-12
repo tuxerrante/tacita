@@ -464,6 +464,30 @@ The evidence index is the final experiment-run envelope. It contains:
 6. final lane and experiment outcomes;
 7. evidence-index digest.
 
+The field names are `schema`, `experiment_id` (`tacita-experiment-1`),
+`artifacts`, `analytical_gates`, `operational_gates`, `product_review_gates`,
+`lanes`, `experiment_outcome`, and `evidence_digest`:
+
+- each artifact holds `kind` (`development_lock`, `analytical_report`,
+  `review_manifest`, `review_result`, or `operational_sidecar`),
+  `repository_object_id` and `run`, both `null` for the lock, and `digest`.
+  Artifacts are ordered by kind as listed, then by corpus order, then by run;
+- each analytical gate holds `repository_object_id`, `run`, `outcome`, and
+  `passing_configurations`. A development report passes when at least one
+  configuration passes every gate there, and its count is recorded. A control
+  report passes when its role's control passes, and its count is `null`. A
+  report that is not `complete` fails;
+- each operational gate holds `repository_object_id`, `run`,
+  `elapsed_outcome`, and `memory_outcome`, `pass` or `fail` against the frozen
+  20-minute and 2 GiB budgets;
+- `product_review_gates` stays empty until a blinded review exists;
+- `lanes` holds `inferred`, then `profile`, each with `outcome` and a `reason`
+  that is `null` only for `pass`. The inferred lane fails without a lock, with
+  the first lane failure or `no_selectable_configuration`, and is
+  `inconclusive` with `holdout_not_run` once a lock exists. The profile lane
+  is `inconclusive` with `not_run` until Milestone 4;
+- `experiment_outcome` is the lanes' conjunction.
+
 The evidence-index digest is SHA-256 over the preceding canonical fields.
 The index is canonical for a recorded run, but two executions may have
 different sidecar digests and therefore different evidence-index bytes. The
@@ -484,6 +508,10 @@ order:
 6. `reference_runner`;
 7. `diagnostic_paths`, which is `null` when absent;
 8. `sidecar_digest`, SHA-256 over the preceding canonical fields.
+
+`report_digest` is `null` when the run wrote no report.
+`process_exit_status` is the exit code, or 128 plus the signal that killed the
+run. `reference_runner` describes the runner and is never empty.
 
 The sidecar is size-bounded, must never contain source blobs or unredacted Git
 stderr, and never rewrites canonical report bytes. It records the runtime and

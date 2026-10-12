@@ -154,32 +154,6 @@ func TestSelectRejectsMalformedReports(t *testing.T) {
 	}
 }
 
-func TestSelectionSummary(t *testing.T) {
-	selection := report.Selection{
-		LaneFailures: []report.LaneFailure{
-			{Repository: "b", Reason: report.LaneOperationalLimit},
-			{Repository: "a", Reason: report.LaneNondeterministicReport},
-		},
-		Rejections: []report.Rejection{
-			{ConfigurationID: "x", Repository: "a", Gate: "coverage", Outcome: "fail"},
-			{ConfigurationID: "x", Repository: "b", Gate: "coverage", Outcome: "fail"},
-			{ConfigurationID: "y", Repository: "a", Gate: "adjacent_jaccard", Outcome: "inconclusive"},
-			{Repository: "b", Gate: "no_history_control", Outcome: "fail"},
-		},
-	}
-
-	want := "no selectable configuration\n" +
-		"lane_failure a nondeterministic_report\n" +
-		"lane_failure b operational_limit\n" +
-		"rejected_configurations 2\n" +
-		"rejections adjacent_jaccard inconclusive 1\n" +
-		"rejections coverage fail 2\n" +
-		"rejections no_history_control fail 1\n"
-	if got := selectionSummary(selection); got != want {
-		t.Errorf("selectionSummary() =\n%s\nwant\n%s", got, want)
-	}
-}
-
 type errorWriter struct{}
 
 func (errorWriter) Write([]byte) (int, error) {

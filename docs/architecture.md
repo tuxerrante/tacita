@@ -770,6 +770,28 @@ enforced by the external harness. A harness kill is recorded through sidecar
 exit status; canonical `failure.observed` remains `null` for elapsed or memory
 limits not observed by Tacita itself.
 
+The reference environment is [`reference/Dockerfile`](../reference/Dockerfile):
+the Go 1.27.0 image pinned by digest, with Git 2.55.0 built from the kernel.org
+release tarball after its checksum is verified against the published list.
+Git's default build includes its Rust core, so the build stage installs Cargo.
+`make reference-image` builds it, and `make reference-run CORPUS=<dir>
+OUT=<dir>` runs [`reference/run.sh`](../reference/run.sh) in it with four CPUs,
+8 GiB, and no network. `CORPUS` holds the bare clones `tools.git`,
+`kubernetes.git`, `go-starter.git`, and `proficiency.git`.
+
+The script builds `tacita` and `tacita-harness` with `CGO_ENABLED=0
+-trimpath`, then the harness runs `tacita calibrate` as a child process twice
+per corpus repository. It measures each
+run's elapsed time with the monotonic clock and its peak resident set from the
+child's `ru_maxrss`, kills a child only after the elapsed budget plus a
+five-minute margin, and records both in the run's operational sidecar, so the
+measurement never enters the analytical report. A run that writes no report
+keeps a sidecar with a `null` report digest. The harness then applies the
+selector when every run wrote a report, using the sidecars' elapsed-time and
+memory outcomes as the operational verdict, and writes the lock or the
+selection summary and the evidence index. The memory budget is checked after
+the run from the peak resident set rather than by killing the child.
+
 ## Reports
 
 The frozen machine contract is [`report-v1.md`](report-v1.md). JSON is

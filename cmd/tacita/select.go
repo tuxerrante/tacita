@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -95,7 +94,7 @@ func runSelect(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 
-	if _, err := io.WriteString(stdout, selectionSummary(selection)); err != nil {
+	if _, err := io.WriteString(stdout, selection.Summary()); err != nil {
 		return fmt.Errorf("writing selection summary: %w", err)
 	}
 
@@ -119,41 +118,4 @@ func readReport(path string) ([]byte, error) {
 	}
 
 	return data, nil
-}
-
-// selectionSummary renders why no lock was written: every lane failure, the
-// number of rejected configurations, and the rejections counted by gate and
-// outcome, in byte order.
-func selectionSummary(selection report.Selection) string {
-	var builder strings.Builder
-	builder.WriteString("no selectable configuration\n")
-
-	failures := slices.Clone(selection.LaneFailures)
-	slices.SortFunc(failures, func(left, right report.LaneFailure) int {
-		return cmp.Or(cmp.Compare(left.Repository, right.Repository), cmp.Compare(left.Reason, right.Reason))
-	})
-	for _, failure := range failures {
-		fmt.Fprintf(&builder, "lane_failure %s %s\n", failure.Repository, failure.Reason)
-	}
-
-	configurations := make(map[string]bool)
-	counts := make(map[string]int)
-	for _, rejection := range selection.Rejections {
-		if rejection.ConfigurationID != "" {
-			configurations[rejection.ConfigurationID] = true
-		}
-		counts[rejection.Gate+" "+rejection.Outcome]++
-	}
-	fmt.Fprintf(&builder, "rejected_configurations %d\n", len(configurations))
-	for _, key := range slices.Sorted(func(yield func(string) bool) {
-		for key := range counts {
-			if !yield(key) {
-				return
-			}
-		}
-	}) {
-		fmt.Fprintf(&builder, "rejections %s %d\n", key, counts[key])
-	}
-
-	return builder.String()
 }

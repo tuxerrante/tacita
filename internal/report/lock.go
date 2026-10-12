@@ -12,6 +12,9 @@ const (
 	LockSchema       = "tacita.dev-lock/v1"
 	SelectorVersion  = "development-selector-v1"
 	lockArchitecture = "linux/amd64"
+	// FrozenGitVersion is the frozen reference environment's exact Git
+	// version, which every calibration and holdout run must use.
+	FrozenGitVersion = "2.55.0"
 )
 
 // Selector metric names, in the frozen selector key order.
@@ -141,7 +144,7 @@ func validateLock(fields LockFields) error {
 		return invalid("lock schema %q selector %q", fields.Schema, fields.Selector)
 	case !slices.Equal(fields.Corpus, corpus):
 		return invalid("lock corpus is not the frozen development and control corpus")
-	case fields.Environment.Architecture != lockArchitecture || fields.Environment.GitVersion == "" ||
+	case fields.Environment.Architecture != lockArchitecture || fields.Environment.GitVersion != FrozenGitVersion ||
 		!isDigest(fields.Environment.TacitaBinarySHA256):
 		return invalid("lock environment %+v", fields.Environment)
 	case fields.GridDigest != grid.GridDigest:

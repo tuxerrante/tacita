@@ -745,9 +745,10 @@ commits. The grid encoder takes no argument and encodes only the frozen grid.
 
 `Select` applies `development-selector-v1` to decoded reports, so the lock is
 chosen from exactly the evidence it records. Every report must be the frozen
-commit of its corpus role and come from one Tacita binary and Git version;
-otherwise selection is an error, because such a report is not evidence about
-the experiment. The frozen rule that a configuration is selectable only if
+commit of its corpus role, come from one Tacita binary and the frozen Git
+version, and carry the exact frozen gate set with gate metrics that agree with
+its metric records; otherwise selection is an error, because such a report is
+not evidence about the experiment. A missing gate never counts as a pass. The frozen rule that a configuration is selectable only if
 every development engineering dimension and required negative control passes
 on both development repositories is read as follows, and these conditions are
 ratified here as the behavior the implementation pins:
@@ -755,15 +756,16 @@ ratified here as the behavior the implementation pins:
 1. lane conditions fail every configuration: two runs of a development
    repository whose report bytes differ, a run the harness reports over its
    elapsed-time or peak-memory budget, a development report that is not
-   `complete`, and a `go-starter` or Proficiency report without a passing
-   control record;
+   `complete`, and a `go-starter` or Proficiency report without exactly its
+   role's control record (`template_origin` or `young_repository`) passing;
 2. a repository-level gate that does not pass, such as the no-history control,
    makes every configuration unselectable;
 3. a configuration is selectable only if every one of its gates passes on both
    development reports.
 
-The selector keys compare the decimal values the reports record, so values
-within the six-digit precision tie and fall through to the next key.
+The selector keys are the passing gates' own metrics, the decimal values the
+reports record, so values within the six-digit precision tie and fall through
+to the next key.
 
 For identical resolved inputs, configuration, Tacita binary, and Git version,
 canonical output must be byte-identical. Therefore:

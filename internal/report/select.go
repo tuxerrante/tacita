@@ -84,7 +84,7 @@ func Select(input SelectionInput) (Selection, error) {
 	digests := make([]ReportDigest, len(input.Development))
 	var selection Selection
 	for index, run := range input.Development {
-		report, err := decodeRole(run.Report, []CorpusRepository{GolangTools, Kubernetes}[index])
+		report, err := decodeRole(run.Report, []CorpusRepository{golangTools, kubernetes}[index])
 		if err != nil {
 			return Selection{}, err
 		}
@@ -104,12 +104,13 @@ func Select(input SelectionInput) (Selection, error) {
 
 	controls := make([]Report, len(input.Controls))
 	for index, data := range input.Controls {
-		report, err := decodeRole(data, []CorpusRepository{GoStarter, Proficiency}[index])
+		role := []CorpusRepository{goStarter, proficiency}[index]
+		report, err := decodeRole(data, role)
 		if err != nil {
 			return Selection{}, err
 		}
 		controls[index] = report
-		if !controlsPass(report) {
+		if !controlPasses(report, controlIDFor(role)) {
 			selection.LaneFailures = append(selection.LaneFailures,
 				LaneFailure{Repository: report.Repository.ResolvedCommit, Reason: LaneControlFailed})
 		}
@@ -129,7 +130,10 @@ func Select(input SelectionInput) (Selection, error) {
 	// Decoding guarantees that both complete reports hold the identical frozen
 	// grid in configuration order, so their configurations correspond.
 
-	candidates, rejections := selectableConfigurations(development)
+	candidates, rejections, err := selectableConfigurations(development)
+	if err != nil {
+		return Selection{}, err
+	}
 	selection.Rejections = rejections
 	if len(selection.LaneFailures) > 0 || len(candidates) == 0 {
 		return selection, nil
@@ -191,30 +195,31 @@ func decodeRole(data []byte, repository CorpusRepository) (Report, error) {
 	return report, nil
 }
 
-// controlsPass requires a complete report whose every control record passes,
-// and at least one control record.
-func controlsPass(report Report) bool {
-	if report.Status != statusComplete || len(report.Controls) == 0 {
-		return false
+// controlIDFor names the control a control repository's role requires.
+func controlIDFor(role CorpusRepository) string {
+	if role.Role == RoleTemplateControl {
+		return "template_origin"
 	}
-	for _, control := range report.Controls {
-		if control.Outcome != outcomePass {
-			return false
-		}
-	}
+	return "young_repository"
+}
 
-	return true
+// controlPasses requires a complete report holding exactly the control its
+// role requires, and that control passing.
+func controlPasses(report Report, id string) bool {
+	return report.Status == statusComplete && len(report.Controls) == 1 &&
+		report.Controls[0].ID == id && report.Controls[0].Outcome == outcomePass
 }
 
 // sharedEnvironment requires every report to come from the same Tacita
-// binary, Git version, and helper version.
+// binary and helper version and from the frozen Git version.
 func sharedEnvironment(reports []Report) (Environment, error) {
 	first := reports[0].Tool
-	for _, report := range reports[1:] {
+	for _, report := range reports {
 		tool := report.Tool
-		if tool.TacitaBinarySHA256 != first.TacitaBinarySHA256 || tool.GitVersion != first.GitVersion ||
+		if tool.TacitaBinarySHA256 != first.TacitaBinarySHA256 || tool.GitVersion != FrozenGitVersion ||
 			compareOptional(tool.GoHelperVersion, first.GoHelperVersion) != 0 {
-			return Environment{}, invalid("reports come from different binaries or Git versions")
+			return Environment{}, invalid(
+				"reports must come from one Tacita binary and Git %s; got Git %s", FrozenGitVersion, tool.GitVersion)
 		}
 	}
 
@@ -226,12 +231,35 @@ func sharedEnvironment(reports []Report) (Environment, error) {
 	}, nil
 }
 
-// selectableConfigurations returns every configuration whose gates pass on both
-// development reports, with its selector keys, and every non-passing gate.
-func selectableConfigurations(reports []Report) ([]selectable, []Rejection) {
+// configurationGates indexes one report's gates by configuration. Decoding
+// already guarantees that a complete calibration holds exactly the frozen gate
+// set, so no gate can be missing here and a missing gate cannot count as a
+// pass.
+func configurationGates(report Report) map[string]map[string]Gate {
+	byConfiguration := make(map[string]map[string]Gate, len(report.Configurations))
+	for _, gate := range report.Gates {
+		if gate.ConfigurationID == nil {
+			continue
+		}
+		if byConfiguration[*gate.ConfigurationID] == nil {
+			byConfiguration[*gate.ConfigurationID] = make(map[string]Gate)
+		}
+		byConfiguration[*gate.ConfigurationID][gate.ID] = gate
+	}
+
+	return byConfiguration
+}
+
+// selectableConfigurations returns every configuration whose gates pass on
+// both development reports, with its selector keys, and every non-passing
+// gate. The keys are the passing gates' own metrics, which must agree with the
+// reports' metric records; a disagreement is malformed evidence.
+func selectableConfigurations(reports []Report) ([]selectable, []Rejection, error) {
+	indexed := make([]map[string]map[string]Gate, len(reports))
 	var rejections []Rejection
 	repositoryGatesPass := true
-	for _, report := range reports {
+	for index, report := range reports {
+		indexed[index] = configurationGates(report)
 		for _, gate := range report.Gates {
 			if gate.ConfigurationID == nil && gate.Outcome != outcomePass {
 				repositoryGatesPass = false
@@ -243,7 +271,7 @@ func selectableConfigurations(reports []Report) ([]selectable, []Rejection) {
 	}
 
 	var candidates []selectable
-	for _, configuration := range reports[0].Configurations {
+	for position, configuration := range reports[0].Configurations {
 		passes := repositoryGatesPass
 		keys := selectable{
 			configuration: configuration,
@@ -251,11 +279,22 @@ func selectableConfigurations(reports []Report) ([]selectable, []Rejection) {
 			coverage:      math.Inf(1),
 			jaccard:       math.Inf(1),
 		}
-		for _, report := range reports {
-			for _, gate := range report.Gates {
-				if gate.ConfigurationID == nil || *gate.ConfigurationID != configuration.ConfigurationID {
-					continue
+		for index, report := range reports {
+			gates := indexed[index][configuration.ConfigurationID]
+			record := report.Metrics[position]
+			if !sameMetric(gates["coverage"].Metric, record.Coverage) ||
+				!sameMetric(gates["adjacent_jaccard"].Metric, record.MinimumJaccard) {
+				return nil, nil, invalid("report %s configuration %s gate metrics disagree with its metric record",
+					report.Repository.ResolvedCommit, configuration.ConfigurationID)
+			}
+			for _, id := range slices.Sorted(func(yield func(string) bool) {
+				for id := range gates {
+					if !yield(id) {
+						return
+					}
 				}
+			}) {
+				gate := gates[id]
 				if gate.Outcome != outcomePass {
 					passes = false
 					rejections = append(rejections, Rejection{
@@ -264,22 +303,12 @@ func selectableConfigurations(reports []Report) ([]selectable, []Rejection) {
 						Gate:            gate.ID,
 						Outcome:         gate.Outcome,
 					})
-					continue
-				}
-				if gate.ID == "frequent_consequent_gain" {
-					keys.gain = min(keys.gain, float64(*gate.Metric.Value))
 				}
 			}
-			for _, record := range report.Metrics {
-				if record.ConfigurationID != configuration.ConfigurationID {
-					continue
-				}
-				if record.Coverage.Value != nil {
-					keys.coverage = min(keys.coverage, float64(*record.Coverage.Value))
-				}
-				if record.MinimumJaccard.Value != nil {
-					keys.jaccard = min(keys.jaccard, float64(*record.MinimumJaccard.Value))
-				}
+			if passes {
+				keys.gain = min(keys.gain, float64(*gates["frequent_consequent_gain"].Metric.Value))
+				keys.coverage = min(keys.coverage, float64(*gates["coverage"].Metric.Value))
+				keys.jaccard = min(keys.jaccard, float64(*gates["adjacent_jaccard"].Metric.Value))
 			}
 		}
 		if passes {
@@ -287,7 +316,19 @@ func selectableConfigurations(reports []Report) ([]selectable, []Rejection) {
 		}
 	}
 
-	return candidates, rejections
+	return candidates, rejections, nil
+}
+
+// sameMetric reports whether two metrics hold the same value or the same
+// undefined reason.
+func sameMetric(left, right Metric) bool {
+	if (left.Value == nil) != (right.Value == nil) {
+		return false
+	}
+	if left.Value != nil {
+		return *left.Value == *right.Value
+	}
+	return *left.Reason == *right.Reason
 }
 
 // compareSelectable orders the preferred configuration first.

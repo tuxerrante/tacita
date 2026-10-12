@@ -20,28 +20,42 @@ func decimalMetric(value float64) Metric {
 }
 
 // selectionReport builds a calibration report for commit whose
-// configurations have the given selector keys; configurations not listed fail.
+// configurations have the given selector keys. Every configuration carries the
+// complete gate set with metrics that agree with its outcomes; an unlisted or
+// failing configuration fails only its coverage gate.
 func selectionReport(t *testing.T, commit string, outcomes map[string]keys) []byte {
 	t.Helper()
 
 	report := completeReport()
 	report.Repository.ResolvedCommit = commit
-	pass := outcomePass
 	report.Gates = []Gate{{
-		ID: "no_history_control", Outcome: pass, Metric: decimalMetric(0), Operator: "<=", Threshold: 0,
+		ID: "no_history_control", Outcome: outcomePass, Metric: decimalMetric(0), Operator: "<=", Threshold: 0,
 	}}
 	report.Metrics = nil
 	for _, record := range report.Configurations {
 		outcome, listed := outcomes[record.ConfigurationID]
-		gateOutcome := outcomePass
 		if !listed || outcome.fail {
-			gateOutcome = outcomeFail
+			outcome = keys{gain: 0.3, coverage: 0.01, jaccard: 0.6}
 		}
 		id := record.ConfigurationID
+		gate := func(gateID string, value float64, operator string, threshold float64) Gate {
+			result := outcomePass
+			if (operator == ">=" && value < threshold) || (operator == "<=" && value > threshold) {
+				result = outcomeFail
+			}
+			return Gate{ConfigurationID: &id, ID: gateID, Outcome: result, Metric: decimalMetric(value), Operator: operator, Threshold: Decimal(threshold)}
+		}
 		report.Gates = append(report.Gates,
-			Gate{ConfigurationID: &id, ID: "coverage", Outcome: gateOutcome, Metric: decimalMetric(outcome.coverage), Operator: ">=", Threshold: 0.05},
-			Gate{ConfigurationID: &id, ID: "frequent_consequent_gain", Outcome: outcomePass, Metric: decimalMetric(outcome.gain), Operator: ">=", Threshold: 0.10},
+			gate("adjacent_jaccard", outcome.jaccard, ">=", 0.50),
+			gate("coverage", outcome.coverage, ">=", 0.05),
+			gate("cutoff_display", 10, ">=", 1),
+			gate("evaluation_windows_covered", 1, ">=", 1),
+			gate("frequent_consequent_gain", outcome.gain, ">=", 0.10),
+			gate("shuffled_control_gain", 0.06, ">=", 0.05),
 		)
+		if record.SizeWeight != weightUnit {
+			report.Gates = append(report.Gates, gate("unweighted_gain", 0, ">=", 0))
+		}
 		report.Metrics = append(report.Metrics, MetricRecord{
 			ConfigurationID:  id,
 			MicroAdherence:   decimalMetric(0.9),
@@ -84,16 +98,16 @@ func controlReport(t *testing.T, repository CorpusRepository, outcome string) []
 func selectionInput(t *testing.T, tools, kubernetes map[string]keys) SelectionInput {
 	t.Helper()
 
-	toolsReport := selectionReport(t, GolangTools.Commit, tools)
-	kubernetesReport := selectionReport(t, Kubernetes.Commit, kubernetes)
+	toolsReport := selectionReport(t, GolangTools().Commit, tools)
+	kubernetesReport := selectionReport(t, Kubernetes().Commit, kubernetes)
 	return SelectionInput{
 		Development: [2]DevelopmentRun{
 			{Report: toolsReport, Repeat: toolsReport, OperationalPass: true},
 			{Report: kubernetesReport, Repeat: kubernetesReport, OperationalPass: true},
 		},
 		Controls: [2][]byte{
-			controlReport(t, GoStarter, outcomePass),
-			controlReport(t, Proficiency, outcomePass),
+			controlReport(t, GoStarter(), outcomePass),
+			controlReport(t, Proficiency(), outcomePass),
 		},
 	}
 }
@@ -180,7 +194,7 @@ func TestSelectWritesTheLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FrozenGrid() error = %v", err)
 	}
-	if !slices.Equal(lock.Corpus, []string{GolangTools.Commit, Kubernetes.Commit, GoStarter.Commit, Proficiency.Commit}) {
+	if !slices.Equal(lock.Corpus, []string{GolangTools().Commit, Kubernetes().Commit, GoStarter().Commit, Proficiency().Commit}) {
 		t.Errorf("corpus = %v", lock.Corpus)
 	}
 	if lock.GridDigest != grid.GridDigest || lock.Selector != SelectorVersion || lock.Environment.Architecture != "linux/amd64" {
@@ -190,8 +204,8 @@ func TestSelectWritesTheLock(t *testing.T) {
 		t.Errorf("parameters = %+v", lock.Parameters)
 	}
 	wantDigests := []ReportDigest{
-		{RepositoryObjectID: GolangTools.Commit, ReportDigest: Digest(input.Development[0].Report)},
-		{RepositoryObjectID: Kubernetes.Commit, ReportDigest: Digest(input.Development[1].Report)},
+		{RepositoryObjectID: GolangTools().Commit, ReportDigest: Digest(input.Development[0].Report)},
+		{RepositoryObjectID: Kubernetes().Commit, ReportDigest: Digest(input.Development[1].Report)},
 	}
 	if !slices.Equal(lock.DevelopmentReports, wantDigests) {
 		t.Errorf("development reports = %+v, want %+v", lock.DevelopmentReports, wantDigests)
@@ -234,12 +248,12 @@ func TestSelectRecordsRejections(t *testing.T) {
 	}
 
 	if selection.Lock != nil {
-		t.Fatalf("Select() selected %s although it failed on Kubernetes", selection.Lock.ConfigurationID)
+		t.Fatalf("Select() selected %s although it failed on Kubernetes()", selection.Lock.ConfigurationID)
 	}
 	if len(selection.LaneFailures) != 0 {
 		t.Errorf("lane failures = %+v, want none", selection.LaneFailures)
 	}
-	want := Rejection{ConfigurationID: unitLoose, Repository: Kubernetes.Commit, Gate: "coverage", Outcome: outcomeFail}
+	want := Rejection{ConfigurationID: unitLoose, Repository: Kubernetes().Commit, Gate: "coverage", Outcome: outcomeFail}
 	if !slices.Contains(selection.Rejections, want) {
 		t.Errorf("rejections do not contain %+v", want)
 	}
@@ -258,40 +272,40 @@ func TestSelectFailsTheLane(t *testing.T) {
 		{
 			name: "a repeated run differs",
 			mutate: func(t *testing.T, input *SelectionInput) {
-				input.Development[1].Repeat = selectionReport(t, Kubernetes.Commit, map[string]keys{})
+				input.Development[1].Repeat = selectionReport(t, Kubernetes().Commit, map[string]keys{})
 			},
-			want: LaneFailure{Repository: Kubernetes.Commit, Reason: LaneNondeterministicReport},
+			want: LaneFailure{Repository: Kubernetes().Commit, Reason: LaneNondeterministicReport},
 		},
 		{
 			name:   "an operational budget",
 			mutate: func(_ *testing.T, input *SelectionInput) { input.Development[0].OperationalPass = false },
-			want:   LaneFailure{Repository: GolangTools.Commit, Reason: LaneOperationalLimit},
+			want:   LaneFailure{Repository: GolangTools().Commit, Reason: LaneOperationalLimit},
 		},
 		{
 			name: "a failing control",
 			mutate: func(t *testing.T, input *SelectionInput) {
-				input.Controls[1] = controlReport(t, Proficiency, outcomeFail)
+				input.Controls[1] = controlReport(t, Proficiency(), outcomeFail)
 			},
-			want: LaneFailure{Repository: Proficiency.Commit, Reason: LaneControlFailed},
+			want: LaneFailure{Repository: Proficiency().Commit, Reason: LaneControlFailed},
 		},
 		{
 			name: "a control report without a control record",
 			mutate: func(t *testing.T, input *SelectionInput) {
 				report := completeReport()
-				report.Repository.ResolvedCommit = GoStarter.Commit
+				report.Repository.ResolvedCommit = GoStarter().Commit
 				encoded, err := Encode(report)
 				if err != nil {
 					t.Fatalf("Encode() error = %v", err)
 				}
 				input.Controls[0] = encoded
 			},
-			want: LaneFailure{Repository: GoStarter.Commit, Reason: LaneControlFailed},
+			want: LaneFailure{Repository: GoStarter().Commit, Reason: LaneControlFailed},
 		},
 		{
 			name: "a failed development report",
 			mutate: func(t *testing.T, input *SelectionInput) {
 				report := failedReport()
-				report.Repository.ResolvedCommit = GolangTools.Commit
+				report.Repository.ResolvedCommit = GolangTools().Commit
 				report.Failure = &Failure{Code: "budget_unique_pairs", Operation: "calibration"}
 				encoded, err := Encode(report)
 				if err != nil {
@@ -299,7 +313,7 @@ func TestSelectFailsTheLane(t *testing.T) {
 				}
 				input.Development[0] = DevelopmentRun{Report: encoded, Repeat: encoded, OperationalPass: true}
 			},
-			want: LaneFailure{Repository: GolangTools.Commit, Reason: LaneReportNotComplete},
+			want: LaneFailure{Repository: GolangTools().Commit, Reason: LaneReportNotComplete},
 		},
 	}
 
@@ -331,7 +345,9 @@ func TestSelectRequiresRepositoryGatesToPass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
-	report.Gates[slices.IndexFunc(report.Gates, func(g Gate) bool { return g.ID == "no_history_control" })].Outcome = outcomeFail
+	noHistory := slices.IndexFunc(report.Gates, func(g Gate) bool { return g.ID == "no_history_control" })
+	report.Gates[noHistory].Outcome = outcomeFail
+	report.Gates[noHistory].Metric = decimalMetric(3)
 	encoded, err := Encode(report)
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
@@ -345,7 +361,7 @@ func TestSelectRequiresRepositoryGatesToPass(t *testing.T) {
 	if selection.Lock != nil {
 		t.Error("Select() wrote a lock although the no-history control failed")
 	}
-	want := Rejection{Repository: Kubernetes.Commit, Gate: "no_history_control", Outcome: outcomeFail}
+	want := Rejection{Repository: Kubernetes().Commit, Gate: "no_history_control", Outcome: outcomeFail}
 	if !slices.Contains(selection.Rejections, want) {
 		t.Errorf("rejections do not contain %+v", want)
 	}
@@ -423,7 +439,7 @@ func TestDecodeLockRejectsTampering(t *testing.T) {
 }
 
 func TestCorpusRepositoryFor(t *testing.T) {
-	if got, ok := CorpusRepositoryFor(Kubernetes.Commit); !ok || got != Kubernetes {
+	if got, ok := CorpusRepositoryFor(Kubernetes().Commit); !ok || got != Kubernetes() {
 		t.Errorf("CorpusRepositoryFor(kubernetes) = %+v, %t", got, ok)
 	}
 	if _, ok := CorpusRepositoryFor("5f9694c42c06e63bb825536486bea93b36418c5d"); ok {
@@ -450,7 +466,7 @@ func TestEncodeLockRejectsUnfrozenContents(t *testing.T) {
 		"unknown identity":  func(f *LockFields) { f.ConfigurationID = "weight=unit" },
 		"parameters":        func(f *LockFields) { f.Parameters.MinimumOpportunities = 0 },
 		"one report":        func(f *LockFields) { f.DevelopmentReports = f.DevelopmentReports[:1] },
-		"report repository": func(f *LockFields) { f.DevelopmentReports[0].RepositoryObjectID = Kubernetes.Commit },
+		"report repository": func(f *LockFields) { f.DevelopmentReports[0].RepositoryObjectID = Kubernetes().Commit },
 		"report digest":     func(f *LockFields) { f.DevelopmentReports[1].ReportDigest = "x" },
 		"metric order": func(f *LockFields) {
 			f.SelectorMetrics[0], f.SelectorMetrics[1] = f.SelectorMetrics[1], f.SelectorMetrics[0]
@@ -479,5 +495,100 @@ func TestEncodeLockRejectsUnfrozenContents(t *testing.T) {
 	forged.LockDigest = strings.Repeat("0", 64)
 	if _, err := EncodeLock(forged); !errors.Is(err, ErrEncode) {
 		t.Errorf("EncodeLock(forged digest) error = %v, want ErrEncode", err)
+	}
+}
+
+// reencoded decodes data, applies mutate, and re-encodes it.
+func reencoded(t *testing.T, data []byte, mutate func(*Report)) []byte {
+	t.Helper()
+
+	report, err := Decode(data)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	mutate(&report)
+	encoded, err := Encode(report)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	return encoded
+}
+
+func TestSelectRequiresTheRoleSpecificControl(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	input := selectionInput(t, passing, passing)
+	input.Controls[1] = reencoded(t, input.Controls[1], func(r *Report) {
+		r.Controls = []Control{{ID: "template_origin", RootEventExcluded: true, Outcome: outcomePass}}
+	})
+
+	selection, err := Select(input)
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	want := LaneFailure{Repository: Proficiency().Commit, Reason: LaneControlFailed}
+	if selection.Lock != nil || !slices.Contains(selection.LaneFailures, want) {
+		t.Errorf("Select() = lock %v, lane failures %+v; want %+v", selection.Lock != nil, selection.LaneFailures, want)
+	}
+}
+
+func TestSelectRejectsGateMetricsThatDisagreeWithTheirRecords(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	tests := map[string]func(*Report){
+		"a metric record that disagrees with its gate": func(r *Report) {
+			index := slices.IndexFunc(r.Metrics, func(m MetricRecord) bool { return m.ConfigurationID == unitLoose })
+			r.Metrics[index].Coverage = decimalMetric(0.9)
+		},
+	}
+
+	for name, mutate := range tests {
+		input := selectionInput(t, passing, passing)
+		input.Development[1].Report = reencoded(t, input.Development[1].Report, mutate)
+		input.Development[1].Repeat = input.Development[1].Report
+		if _, err := Select(input); !errors.Is(err, ErrEncode) {
+			t.Errorf("%s: Select() error = %v, want ErrEncode", name, err)
+		}
+	}
+}
+
+func TestSelectRequiresTheFrozenGitVersion(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	input := selectionInput(t, passing, passing)
+	for index := range input.Development {
+		input.Development[index].Report = reencoded(t, input.Development[index].Report, func(r *Report) { r.Tool.GitVersion = "2.47.3" })
+		input.Development[index].Repeat = input.Development[index].Report
+	}
+	for index := range input.Controls {
+		input.Controls[index] = reencoded(t, input.Controls[index], func(r *Report) { r.Tool.GitVersion = "2.47.3" })
+	}
+
+	if _, err := Select(input); !errors.Is(err, ErrEncode) {
+		t.Errorf("Select(Git 2.47.3) error = %v, want ErrEncode", err)
+	}
+}
+
+func TestCorpusAccessorsReturnCopies(t *testing.T) {
+	repository := GolangTools()
+	repository.Commit = strings.Repeat("0", 40)
+
+	if GolangTools().Commit == repository.Commit {
+		t.Error("changing a returned corpus record changed the frozen corpus")
+	}
+}
+
+func TestSameMetric(t *testing.T) {
+	tests := []struct {
+		left, right Metric
+		want        bool
+	}{
+		{decimalMetric(0.5), decimalMetric(0.5), true},
+		{decimalMetric(0.5), decimalMetric(0.6), false},
+		{decimalMetric(0.5), reasonMetric("no_candidates"), false},
+		{reasonMetric("no_candidates"), reasonMetric("no_candidates"), true},
+		{reasonMetric("no_candidates"), reasonMetric("no_opportunities"), false},
+	}
+	for _, tt := range tests {
+		if got := sameMetric(tt.left, tt.right); got != tt.want {
+			t.Errorf("sameMetric(%+v, %+v) = %t, want %t", tt.left, tt.right, got, tt.want)
+		}
 	}
 }

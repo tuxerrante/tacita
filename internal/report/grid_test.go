@@ -11,9 +11,9 @@ func TestFrozenGridEncodesCanonically(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FrozenGrid() error = %v", err)
 	}
-	encoded, err := EncodeGrid(grid)
+	encoded, err := EncodeFrozenGrid()
 	if err != nil {
-		t.Fatalf("EncodeGrid() error = %v", err)
+		t.Fatalf("EncodeFrozenGrid() error = %v", err)
 	}
 
 	const fields = `{"schema":"tacita.grid/v1","minimum_training_transactions":100,"minimum_raw_support":3,` +
@@ -24,7 +24,7 @@ func TestFrozenGridEncodesCanonically(t *testing.T) {
 	digest := Digest([]byte(fields + "}\n"))
 	want := fields + `,"grid_digest":"` + digest + `"}` + "\n"
 	if string(encoded) != want {
-		t.Errorf("EncodeGrid() =\n%s\nwant\n%s", encoded, want)
+		t.Errorf("EncodeFrozenGrid() =\n%s\nwant\n%s", encoded, want)
 	}
 	if grid.GridDigest != digest {
 		t.Errorf("GridDigest = %s, want %s", grid.GridDigest, digest)

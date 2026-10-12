@@ -38,7 +38,7 @@ func FrozenGrid() (Grid, error) {
 		Schema:                      GridSchema,
 		MinimumTrainingTransactions: 100,
 		MinimumRawSupport:           3,
-		SizeWeights:                 []string{"unit", "inverse-component", "pair-normalized"},
+		SizeWeights:                 []string{weightUnit, weightInverseComponent, weightPairNormalized},
 		MinimumOpportunities:        []uint64{5, 10, 20},
 		MinimumConfidence:           []Decimal{0.70, 0.80, 0.90},
 		MinimumLift:                 []Decimal{1.25, 1.50, 2.00},
@@ -71,8 +71,13 @@ func FrozenGrid() (Grid, error) {
 	}, nil
 }
 
-// EncodeGrid renders the canonical grid artifact.
-func EncodeGrid(grid Grid) ([]byte, error) {
+// EncodeFrozenGrid renders the canonical frozen grid artifact. It takes no
+// argument, so no caller can encode a grid the experiment did not freeze.
+func EncodeFrozenGrid() ([]byte, error) {
+	grid, err := FrozenGrid()
+	if err != nil {
+		return nil, err
+	}
 	encoded, err := canonicalJSON(grid)
 	if err != nil {
 		return nil, &EncodeError{Detail: err.Error()}

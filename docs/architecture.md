@@ -737,7 +737,9 @@ enforces the report row and byte budgets with their frozen failure codes.
 unless the bytes are reproduced exactly, so any accepted report is canonical.
 `Calibration` builds a repository's report from both orderings' outcomes and
 decides its gates itself, so the recorded gates cannot disagree with the
-recorded metrics.
+recorded metrics. It also requires the repository record to describe the
+supplied chain, so metrics from one history cannot be labelled with another's
+commits. The grid encoder takes no argument and encodes only the frozen grid.
 
 For identical resolved inputs, configuration, Tacita binary, and Git version,
 canonical output must be byte-identical. Therefore:

@@ -2,13 +2,24 @@ package report
 
 import "slices"
 
+// Enumeration values the package itself produces or branches on.
+const (
+	kindCalibration        = "calibration"
+	statusComplete         = "complete"
+	statusFailed           = "failed"
+	outcomePass            = "pass"
+	outcomeFail            = "fail"
+	weightUnit             = "unit"
+	weightInverseComponent = "inverse-component"
+	weightPairNormalized   = "pair-normalized"
+)
+
 // Frozen enumerations. A value outside them is an encoding and decoding error.
 var (
-	kinds          = []string{"backtest", "calibration", "profile"}
-	statuses       = []string{"complete", "failed", "inconclusive"}
+	kinds          = []string{"backtest", kindCalibration, "profile"}
+	statuses       = []string{statusComplete, statusFailed, "inconclusive"}
 	origins        = []string{"inferred"}
-	sizeWeights    = []string{"inverse-component", "pair-normalized", "unit"}
-	gateOutcomes   = []string{"fail", "inconclusive", "pass"}
+	gateOutcomes   = []string{outcomeFail, "inconclusive", outcomePass}
 	operators      = []string{"<=", ">="}
 	exclusionScope = []string{"event", "path"}
 	eventKinds     = []string{"merge-result", "root", "single-parent"}
@@ -109,8 +120,15 @@ const (
 	unitPaths      = "paths"
 )
 
-// Budgets lists the frozen per-run resource budgets in budget-ID order.
-var Budgets = []BudgetSpec{
+// FrozenBudgets returns a detached copy of the frozen per-run resource budgets
+// in budget-ID order.
+func FrozenBudgets() []BudgetSpec {
+	return slices.Clone(budgetSpecs)
+}
+
+// budgetSpecs is the canonical budget table that validation trusts. It is
+// never handed out, so no caller can change a frozen limit.
+var budgetSpecs = []BudgetSpec{
 	{ID: "distinct_components", Unit: unitComponents, Limit: 50_000},
 	{ID: "distinct_pairs", Unit: unitPairs, Limit: 2_000_000},
 	{ID: "distinct_paths", Unit: unitPaths, Limit: 2_000_000},

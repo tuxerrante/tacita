@@ -3,8 +3,11 @@ package report
 import (
 	"bytes"
 	"cmp"
+	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/tuxerrante/tacita/internal/mining"
 )
 
 const (
@@ -53,13 +56,24 @@ func Decode(data []byte) (Report, error) {
 	}
 	canonical, err := Encode(report)
 	if err != nil {
-		return Report{}, err
+		return Report{}, asDecodeError(err)
 	}
 	if !bytes.Equal(canonical, data) {
 		return Report{}, &DecodeError{Detail: "report bytes are not canonical"}
 	}
 
 	return report, nil
+}
+
+// asDecodeError reports a contract violation found in decoded bytes as a
+// decoding error. A budget breach keeps its own category and failure code.
+func asDecodeError(err error) error {
+	var encodeErr *EncodeError
+	if errors.As(err, &encodeErr) {
+		return &DecodeError{Detail: encodeErr.Detail}
+	}
+
+	return err
 }
 
 // CountRows returns the report's rows as the frozen row budget counts them.
@@ -128,6 +142,7 @@ func nonNil[T any](values []T) []T {
 func validate(report Report) error {
 	checks := []func(Report) error{
 		validateHeader,
+		validateShape,
 		validateConfigurations,
 		validateBudgets,
 		validatePartitions,
@@ -160,7 +175,7 @@ func validateHeader(report Report) error {
 		return invalid("kind %q", report.Kind)
 	case !oneOf(statuses, report.Status):
 		return invalid("status %q", report.Status)
-	case (report.Status == "failed") != (report.Failure != nil):
+	case (report.Status == statusFailed) != (report.Failure != nil):
 		return invalid("status %q with failure present %t", report.Status, report.Failure != nil)
 	case !isDigest(report.Tool.TacitaBinarySHA256):
 		return invalid("tacita_binary_sha256 %q", report.Tool.TacitaBinarySHA256)
@@ -190,15 +205,60 @@ func validateHeader(report Report) error {
 	return nil
 }
 
-func validateConfigurations(report Report) error {
-	for index, configuration := range report.Configurations {
-		if !oneOf(sizeWeights, configuration.SizeWeight) {
-			return invalid("configuration size_weight %q", configuration.SizeWeight)
+// cutoffPercentiles are the frozen calibration partitions, in report order.
+var cutoffPercentiles = []int{60, 70, 80, 90}
+
+// validateShape requires a complete calibration report to hold the whole
+// frozen grid, the four frozen partitions, and one metric record per
+// configuration in the same order.
+func validateShape(report Report) error {
+	if report.Kind != kindCalibration || report.Status != statusComplete {
+		return nil
+	}
+	if len(report.Configurations) != len(mining.AllConfigurations()) {
+		return invalid("complete calibration holds %d configurations, want %d",
+			len(report.Configurations), len(mining.AllConfigurations()))
+	}
+	percentiles := make([]int, len(report.Partitions))
+	for index, partition := range report.Partitions {
+		percentiles[index] = partition.Percentile
+	}
+	if !slices.Equal(percentiles, cutoffPercentiles) {
+		return invalid("complete calibration partitions %v, want %v", percentiles, cutoffPercentiles)
+	}
+	if len(report.Metrics) != len(report.Configurations) {
+		return invalid("complete calibration holds %d metric records for %d configurations",
+			len(report.Metrics), len(report.Configurations))
+	}
+	for index, record := range report.Metrics {
+		if record.ConfigurationID != report.Configurations[index].ConfigurationID {
+			return invalid("metric record %d is for %s, want %s",
+				index, record.ConfigurationID, report.Configurations[index].ConfigurationID)
 		}
-		if lock := configuration.DevelopmentLockDigest; lock != nil && !isDigest(*lock) {
+	}
+
+	return nil
+}
+
+// validateConfigurations resolves every record against the frozen grid, so an
+// ID cannot carry thresholds other than its own.
+func validateConfigurations(report Report) error {
+	frozen := make(map[string]mining.Configuration)
+	for _, configuration := range mining.AllConfigurations() {
+		frozen[configuration.ID()] = configuration
+	}
+	for index, record := range report.Configurations {
+		configuration, ok := frozen[record.ConfigurationID]
+		if !ok || string(configuration.SizeWeight) != record.SizeWeight ||
+			configuration.MinimumOpportunities != record.MinimumOpportunities ||
+			configuration.MinimumConfidence != float64(record.MinimumConfidence) ||
+			configuration.MinimumLift != float64(record.MinimumLift) {
+			return invalid("configuration %q is not a frozen grid point", record.ConfigurationID)
+		}
+		if lock := record.DevelopmentLockDigest; lock != nil && !isDigest(*lock) {
 			return invalid("development_lock_digest %q", *lock)
 		}
-		if index > 0 && report.Configurations[index-1].ConfigurationID >= configuration.ConfigurationID {
+		if index > 0 && report.Configurations[index-1].ConfigurationID >= record.ConfigurationID {
 			return invalid("configurations not in strict configuration-ID order at %d", index)
 		}
 	}
@@ -206,17 +266,25 @@ func validateConfigurations(report Report) error {
 	return nil
 }
 
+// validateBudgets requires the frozen budget table and derives each outcome
+// from its observation, so a record cannot pass a limit it exceeds.
 func validateBudgets(report Report) error {
 	for index, budget := range report.Budgets {
-		spec := slices.IndexFunc(Budgets, func(spec BudgetSpec) bool { return spec.ID == budget.ID })
-		if spec < 0 || Budgets[spec].Unit != budget.Unit || Budgets[spec].Limit != budget.Limit {
+		spec := slices.IndexFunc(budgetSpecs, func(spec BudgetSpec) bool { return spec.ID == budget.ID })
+		if spec < 0 || budgetSpecs[spec].Unit != budget.Unit || budgetSpecs[spec].Limit != budget.Limit {
 			return invalid("budget %q unit %q limit %d", budget.ID, budget.Unit, budget.Limit)
 		}
-		if Budgets[spec].Unobserved != (budget.Observed == nil) || (budget.Observed == nil) != (budget.Outcome == nil) {
+		if budgetSpecs[spec].Unobserved != (budget.Observed == nil) || (budget.Observed == nil) != (budget.Outcome == nil) {
 			return invalid("budget %q observation presence", budget.ID)
 		}
-		if budget.Outcome != nil && *budget.Outcome != "pass" && *budget.Outcome != "fail" {
-			return invalid("budget %q outcome %q", budget.ID, *budget.Outcome)
+		if budget.Observed != nil {
+			want := outcomePass
+			if *budget.Observed > budget.Limit {
+				want = outcomeFail
+			}
+			if *budget.Observed < 0 || *budget.Outcome != want {
+				return invalid("budget %q observed %d outcome %q", budget.ID, *budget.Observed, *budget.Outcome)
+			}
 		}
 		if index > 0 && report.Budgets[index-1].ID >= budget.ID {
 			return invalid("budgets not in strict ID order at %d", index)
@@ -226,7 +294,15 @@ func validateBudgets(report Report) error {
 	return nil
 }
 
+// validatePartitions requires one-based, contiguous, non-overlapping event
+// ranges inside the chain, eligible counts that fit their ranges, and
+// displayed counts that match the candidate records.
 func validatePartitions(report Report) error {
+	events := report.Repository.FirstParentEvents
+	displayed := make(map[int]int)
+	for _, candidate := range report.Candidates {
+		displayed[candidate.Partition]++
+	}
 	for index, partition := range report.Partitions {
 		if !slices.Contains([]int{60, 70, 80, 90, 100}, partition.Percentile) ||
 			(index > 0 && report.Partitions[index-1].Percentile >= partition.Percentile) {
@@ -235,6 +311,34 @@ func validatePartitions(report Report) error {
 		if !isObjectID(partition.CutoffCommit) {
 			return invalid("partition %d cutoff_commit %q", partition.Percentile, partition.CutoffCommit)
 		}
+		training := partition.TrainingLastEvent
+		evaluation := partition.EvaluationLastEvent - partition.TrainingLastEvent
+		if partition.TrainingFirstEvent != 1 || training < 1 ||
+			partition.EvaluationFirstEvent != training+1 || evaluation < 0 ||
+			partition.EvaluationLastEvent > events {
+			return invalid("partition %d event ranges", partition.Percentile)
+		}
+		if index > 0 && partition.Percentile != 100 &&
+			training != report.Partitions[index-1].EvaluationLastEvent {
+			return invalid("partition %d does not start where %d ends",
+				partition.Percentile, report.Partitions[index-1].Percentile)
+		}
+		if partition.EligibleTrainingTransactions < 0 || partition.EligibleTrainingTransactions > training ||
+			partition.EligibleEvaluationTransactions < 0 || partition.EligibleEvaluationTransactions > evaluation {
+			return invalid("partition %d eligible counts", partition.Percentile)
+		}
+		if partition.DisplayedCandidates != displayed[partition.Percentile] {
+			return invalid("partition %d displays %d candidates, report holds %d",
+				partition.Percentile, partition.DisplayedCandidates, displayed[partition.Percentile])
+		}
+		delete(displayed, partition.Percentile)
+	}
+	if len(report.Partitions) > 0 && report.Partitions[len(report.Partitions)-1].Percentile == 90 &&
+		report.Partitions[len(report.Partitions)-1].EvaluationLastEvent != events {
+		return invalid("the last evaluation window does not end at the chain's last event")
+	}
+	if len(displayed) > 0 {
+		return invalid("candidates name a partition the report does not hold")
 	}
 
 	return nil
@@ -267,6 +371,10 @@ func validateCandidates(report Report) error {
 		if candidate.Rank < 1 || candidate.RawSupport > candidate.RawOpportunity {
 			return invalid("candidate %s rank %d support %d opportunity %d",
 				candidate.ID, candidate.Rank, candidate.RawSupport, candidate.RawOpportunity)
+		}
+		if candidate.Supporting.TotalEvents != candidate.RawSupport ||
+			candidate.Exceptions.TotalEvents != candidate.RawOpportunity-candidate.RawSupport {
+			return invalid("candidate %s evidence totals disagree with its raw counts", candidate.ID)
 		}
 		if err := validateEvidence(candidate.Supporting); err != nil {
 			return err

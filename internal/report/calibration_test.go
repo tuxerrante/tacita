@@ -59,14 +59,17 @@ func calibrationInput(t *testing.T) CalibrationInput {
 		t.Fatalf("EvaluateOrdering(shuffled) error = %v", err)
 	}
 
-	report := minimalReport()
-	report.Repository.ReachableCommits = eventCount
-	report.Repository.FirstParentEvents = eventCount
-	report.Repository.SingleParentEvents = eventCount - 1
-	report.Repository.MergeResultEvents = 0
+	report := failedReport()
 	return CalibrationInput{
-		Tool:          report.Tool,
-		Repository:    report.Repository,
+		Tool: report.Tool,
+		Repository: Repository{
+			ObjectFormat:       "sha1",
+			RootCommit:         events[0].ID.String(),
+			ResolvedCommit:     events[eventCount-1].ID.String(),
+			ReachableCommits:   eventCount,
+			FirstParentEvents:  eventCount,
+			SingleParentEvents: eventCount - 1,
+		},
 		Events:        events,
 		Transactions:  transactions,
 		Partitions:    partitions,
@@ -194,10 +197,25 @@ func TestCalibrationRejectsInconsistentInput(t *testing.T) {
 		t.Error("Calibration() accepted mismatched orderings")
 	}
 
-	input = calibrationInput(t)
-	input.Events = input.Events[:10]
-	if _, err := Calibration(input); err == nil {
-		t.Error("Calibration() accepted a cutoff outside the chain")
+	tests := map[string]func(*CalibrationInput){
+		"another root":         func(in *CalibrationInput) { in.Repository.RootCommit = strings.Repeat("9", 40) },
+		"another tip":          func(in *CalibrationInput) { in.Repository.ResolvedCommit = strings.Repeat("9", 40) },
+		"another event count":  func(in *CalibrationInput) { in.Repository.FirstParentEvents++ },
+		"another kind count":   func(in *CalibrationInput) { in.Repository.MergeResultEvents = 1 },
+		"a second root":        func(in *CalibrationInput) { in.Events[3].Kind = gitlog.RootEvent },
+		"no root":              func(in *CalibrationInput) { in.Events[0].Kind = gitlog.SingleParentEvent },
+		"no events":            func(in *CalibrationInput) { in.Events = nil },
+		"a truncated chain":    func(in *CalibrationInput) { in.Events = in.Events[:10] },
+		"a missing display":    func(in *CalibrationInput) { in.Chronological[3].Displays = in.Chronological[3].Displays[1:] },
+		"an extra partition":   func(in *CalibrationInput) { in.Partitions = append(in.Partitions, in.Partitions[3]) },
+		"a short shuffled run": func(in *CalibrationInput) { in.Shuffled[0].Displays = nil },
+	}
+	for name, mutate := range tests {
+		input := calibrationInput(t)
+		mutate(&input)
+		if _, err := Calibration(input); err == nil {
+			t.Errorf("%s: Calibration() succeeded, want an error", name)
+		}
 	}
 }
 

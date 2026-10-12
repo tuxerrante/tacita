@@ -55,6 +55,15 @@ var (
 // decides the development gates from the two orderings, so the report cannot
 // disagree with the outcomes it records.
 func Calibration(input CalibrationInput) (Report, error) {
+	if err := checkChain(input.Repository, input.Events); err != nil {
+		return Report{}, err
+	}
+	for _, outcome := range append(slices.Clone(input.Chronological), input.Shuffled...) {
+		if len(outcome.Displays) != len(input.Partitions) {
+			return Report{}, invalid("%s has %d displays for %d partitions",
+				outcome.Configuration.ID(), len(outcome.Displays), len(input.Partitions))
+		}
+	}
 	decided, err := backtest.DevelopmentGates(input.Chronological, input.Shuffled)
 	if err != nil {
 		return Report{}, err
@@ -67,8 +76,8 @@ func Calibration(input CalibrationInput) (Report, error) {
 
 	report := Report{
 		Schema:         ReportSchema,
-		Kind:           "calibration",
-		Status:         "complete",
+		Kind:           kindCalibration,
+		Status:         statusComplete,
 		Tool:           input.Tool,
 		Repository:     input.Repository,
 		Configurations: configurations(input.Chronological),
@@ -84,6 +93,34 @@ func Calibration(input CalibrationInput) (Report, error) {
 	}
 
 	return report, nil
+}
+
+// checkChain requires the repository record to describe events: its root and
+// resolved commits, its event count, and its event kinds.
+func checkChain(repository Repository, events []gitlog.Event) error {
+	if len(events) == 0 {
+		return invalid("calibration has no first-parent events")
+	}
+	var singleParent, mergeResult int
+	for index, event := range events {
+		switch {
+		case index == 0 && event.Kind != gitlog.RootEvent, index > 0 && event.Kind == gitlog.RootEvent:
+			return invalid("event %d kind %s breaks the chain", index+1, event.Kind)
+		case event.Kind == gitlog.SingleParentEvent:
+			singleParent++
+		case event.Kind == gitlog.MergeEvent:
+			mergeResult++
+		}
+	}
+	if repository.RootCommit != events[0].ID.String() ||
+		repository.ResolvedCommit != events[len(events)-1].ID.String() ||
+		repository.FirstParentEvents != len(events) ||
+		repository.SingleParentEvents != singleParent ||
+		repository.MergeResultEvents != mergeResult {
+		return invalid("repository record does not describe the supplied chain")
+	}
+
+	return nil
 }
 
 func configurations(outcomes []backtest.Outcome) []Configuration {

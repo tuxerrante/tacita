@@ -128,6 +128,8 @@ The budget IDs, units, and limits are:
 observed by the experiment harness, and `report_bytes` cannot hold the size of
 the report that contains it, so these four records set `observed` and
 `outcome` to `null`. The encoder still enforces the report byte budget.
+Every other record's `observed` is non-negative and its `outcome` is `pass`
+exactly when `observed` is at most `limit`.
 
 Each exclusion record contains `scope`, `reason`, and `count`. Scope is `event`
 or `path`. Records are sorted by scope then reason. A report lists every event
@@ -145,6 +147,14 @@ counts. Indices are one-based. The fields are `percentile`, `cutoff_commit`,
 The eligible counts are the deterministic work counts. `displayed_candidates`
 counts the candidate records at that partition across the report's
 configurations.
+Training starts at event 1 and holds at least one event, each evaluation
+range starts after its training range, consecutive partitions are contiguous,
+the `90` partition's evaluation range ends at the last first-parent event, and
+each eligible count fits its range.
+
+A `complete` calibration report holds all 81 frozen configurations, each
+record matching its frozen grid point, the `60`, `70`, `80`, and `90`
+partitions, and one metric record per configuration in configuration order.
 
 ### Candidate records
 

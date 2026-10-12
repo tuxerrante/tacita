@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -257,14 +258,15 @@ func calibrateOnce(
 	return record, nil
 }
 
-// memoryPoll is how often the harness samples the child's peak resident set.
+// memoryPoll is how often the harness samples the run's peak resident set.
 const memoryPoll = 50 * time.Millisecond
 
-// runWatchingMemory starts cmd and waits for it while sampling the child's
-// peak resident set from /proc. When the peak exceeds limit, the frozen
-// memory budget, it calls stop, which kills the child through its context. One
-// goroutine waits for the child; it ends when the child exits, and its result
-// is always received before returning.
+// runWatchingMemory starts cmd and waits for it while sampling the peak
+// resident set of the child and its descendants from /proc, the processes
+// whose maximum ru_maxrss reports once they are waited for. When a peak
+// exceeds limit, the frozen memory budget, it calls stop, which kills the
+// child through its context. One goroutine waits for the child; it ends when
+// the child exits, and its result is always received before returning.
 func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) error {
 	if err := cmd.Start(); err != nil {
 		return err
@@ -272,7 +274,6 @@ func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) erro
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
-	status := filepath.Join("/proc", strconv.Itoa(cmd.Process.Pid), "status")
 	ticker := time.NewTicker(memoryPoll)
 	defer ticker.Stop()
 	for {
@@ -280,29 +281,76 @@ func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) erro
 		case err := <-done:
 			return err
 		case <-ticker.C:
-			if peak, ok := highWaterMark(status); ok && peak > limit {
+			if peak, ok := treeHighWaterMark("/proc", cmd.Process.Pid); ok && peak > limit {
 				stop()
 			}
 		}
 	}
 }
 
+// treeHighWaterMark is the largest VmHWM among the process root and its
+// descendants under a /proc tree. It reports false when root's own status
+// cannot be read; a descendant that exits while the tree is read is skipped.
+func treeHighWaterMark(proc string, root int) (int64, bool) {
+	peak, ok := highWaterMark(filepath.Join(proc, strconv.Itoa(root), "status"))
+	if !ok {
+		return 0, false
+	}
+	entries, err := os.ReadDir(proc)
+	if err != nil {
+		return peak, true
+	}
+	children := make(map[int][]int)
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		if parent, found := statusField(filepath.Join(proc, entry.Name(), "status"), "PPid:"); found {
+			children[int(parent)] = append(children[int(parent)], pid)
+		}
+	}
+	pending := slices.Clone(children[root])
+	seen := map[int]bool{root: true}
+	for len(pending) > 0 {
+		pid := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		if value, found := highWaterMark(filepath.Join(proc, strconv.Itoa(pid), "status")); found {
+			peak = max(peak, value)
+		}
+		pending = append(pending, children[pid]...)
+	}
+
+	return peak, true
+}
+
 // highWaterMark reads VmHWM, the peak resident set, from a /proc status file.
 func highWaterMark(path string) (int64, bool) {
-	data, err := os.ReadFile(path) //nolint:gosec // a /proc path built from the child's PID
+	kibibytes, found := statusField(path, "VmHWM:")
+	return kibibytes * 1024, found
+}
+
+// statusField reads one integer field from a /proc status file, dropping a
+// trailing kB unit.
+func statusField(path, name string) (int64, bool) {
+	data, err := os.ReadFile(path) //nolint:gosec // a /proc path built from a PID
 	if err != nil {
 		return 0, false
 	}
 	for _, line := range strings.Split(string(data), "\n") {
-		value, found := strings.CutPrefix(line, "VmHWM:")
+		value, found := strings.CutPrefix(line, name)
 		if !found {
 			continue
 		}
-		kibibytes, err := strconv.ParseInt(strings.TrimSuffix(strings.TrimSpace(value), " kB"), 10, 64)
+		parsed, err := strconv.ParseInt(strings.TrimSuffix(strings.TrimSpace(value), " kB"), 10, 64)
 		if err != nil {
 			return 0, false
 		}
-		return kibibytes * 1024, true
+		return parsed, true
 	}
 
 	return 0, false

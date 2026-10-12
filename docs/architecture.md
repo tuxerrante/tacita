@@ -786,11 +786,13 @@ per corpus repository into an empty output directory, naming every artifact
 after the repository's corpus identity rather than its path. It measures each
 run's elapsed time with the monotonic clock and its peak resident set from the
 child's `ru_maxrss`, and records both in the run's operational sidecar, so the
-measurement never enters the analytical report. While the child runs, the
-harness samples its peak resident set from `/proc/<pid>/status` every 50 ms and
-kills it once it exceeds 2 GiB; it also kills it at the first byte past the
-report or diagnostic output bound, or after the elapsed budget plus a
-five-minute margin. A killed child records 128 plus the signal as its exit
+measurement never enters the analytical report. On Linux, `ru_maxrss` is the
+largest resident set of the child and every descendant it waited for, so the
+run's peak includes Tacita's Git subprocesses. While the child runs, the
+harness samples the same process tree's `VmHWM` from `/proc` every 50 ms and
+kills the child once any of them exceeds 2 GiB; it also kills it at the first
+byte past the report or diagnostic output bound, or after the elapsed budget
+plus a five-minute margin. A killed child records 128 plus the signal as its exit
 status. Non-empty diagnostic output is written beside the sidecar, which names
 it in `diagnostic_paths`, and a run that writes no report keeps a sidecar with
 a `null` report digest. The harness then applies the selector when every run

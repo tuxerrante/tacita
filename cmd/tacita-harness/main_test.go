@@ -64,6 +64,35 @@ func TestHighWaterMark(t *testing.T) {
 	}
 }
 
+func TestTreeHighWaterMarkCoversDescendants(t *testing.T) {
+	proc := t.TempDir()
+	for pid, status := range map[string]string{
+		"10":   "PPid:\t1\nVmHWM:\t100 kB\n",
+		"11":   "PPid:\t10\nVmHWM:\t300 kB\n",
+		"12":   "PPid:\t11\nVmHWM:\t3000 kB\n",
+		"13":   "PPid:\t1\nVmHWM:\t9999 kB\n",
+		"14":   "PPid:\t10\n",
+		"self": "PPid:\t10\nVmHWM:\t9999 kB\n",
+	} {
+		if err := os.Mkdir(filepath.Join(proc, pid), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(proc, pid, "status"), []byte(status), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if peak, ok := treeHighWaterMark(proc, 10); !ok || peak != 3000*1024 {
+		t.Errorf("treeHighWaterMark(10) = %d, %t, want the grandchild's %d", peak, ok, 3000*1024)
+	}
+	if peak, ok := treeHighWaterMark(proc, 11); !ok || peak != 3000*1024 {
+		t.Errorf("treeHighWaterMark(11) = %d, %t", peak, ok)
+	}
+	if _, ok := treeHighWaterMark(proc, 99); ok {
+		t.Error("treeHighWaterMark(exited root) reported a value")
+	}
+}
+
 func TestRunWatchingMemoryKillsAChildOverItsLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

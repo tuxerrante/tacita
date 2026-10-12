@@ -415,6 +415,12 @@ func TestSelectRejectsInvalidEvidence(t *testing.T) {
 				r.Tool.TacitaBinarySHA256 = strings.Repeat("b", 64)
 			}))
 		},
+		"a development report with a control record": func(t *testing.T, input *SelectionInput) {
+			input.Development[0].Report = reencoded(t, input.Development[0].Report, func(r *Report) {
+				r.Controls = []Control{{ID: "young_repository", Outcome: outcomePass}}
+			})
+			input.Development[0].Repeat = input.Development[0].Report
+		},
 		"a backtest report": func(t *testing.T, input *SelectionInput) {
 			input.Controls[0] = controlRun(reencoded(t, input.Controls[0].Report, func(r *Report) { r.Kind = "backtest" }))
 		},

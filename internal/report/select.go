@@ -115,6 +115,9 @@ func Select(input SelectionInput) (Selection, error) {
 		if err != nil {
 			return Selection{}, err
 		}
+		if len(report.Controls) > 0 {
+			return Selection{}, invalid("development report %s holds control records", repository.Commit)
+		}
 		development[index] = report
 		digests[index] = ReportDigest{RepositoryObjectID: repository.Commit, ReportDigest: Digest(run.Report)}
 		if report.Status != statusComplete {

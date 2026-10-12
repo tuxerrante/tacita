@@ -19,7 +19,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -278,12 +277,12 @@ func groupCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
 	return cmd
 }
 
-// runWatchingMemory starts cmd and waits for it while sampling the peak
-// resident set of the child and its descendants from /proc. When a peak
-// exceeds limit, the frozen memory budget, it calls stop, which kills the
-// child's process group through its context. It returns the largest sample,
-// which covers a descendant killed before the child could wait for it and so
-// missing from ru_maxrss. One goroutine waits for the child; it ends when the
+// runWatchingMemory starts cmd, which must lead its own process group, and
+// waits for it while sampling the peak resident set of every group member
+// from /proc. When a peak exceeds limit, the frozen memory budget, it calls
+// stop, which kills the group through the child's context. It returns the
+// largest sample, which covers a member killed before the child could wait
+// for it and so missing from ru_maxrss. One goroutine waits for the child; it ends when the
 // child exits, and its result is always received before returning.
 func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) (int64, error) {
 	if err := cmd.Start(); err != nil {
@@ -300,7 +299,7 @@ func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) (int
 		case err := <-done:
 			return sampled, err
 		case <-ticker.C:
-			peak, ok := treeHighWaterMark("/proc", cmd.Process.Pid)
+			peak, ok := groupHighWaterMark("/proc", cmd.Process.Pid)
 			if !ok {
 				continue
 			}
@@ -335,44 +334,54 @@ func awaitGroup(group int) error {
 	}
 }
 
-// treeHighWaterMark is the largest VmHWM among the process root and its
-// descendants under a /proc tree. It reports false when root's own status
-// cannot be read; a descendant that exits while the tree is read is skipped.
-func treeHighWaterMark(proc string, root int) (int64, bool) {
-	peak, ok := highWaterMark(filepath.Join(proc, strconv.Itoa(root), "status"))
-	if !ok {
-		return 0, false
-	}
+// groupHighWaterMark is the largest VmHWM among the members of a process
+// group under a /proc tree, the set that killing the group reaches, including
+// a member reparented after its parent exited. It reports false when no
+// member can be read; a member that exits while the tree is read is skipped.
+func groupHighWaterMark(proc string, group int) (int64, bool) {
 	entries, err := os.ReadDir(proc)
 	if err != nil {
-		return peak, true
+		return 0, false
 	}
-	children := make(map[int][]int)
+	var peak int64
+	found := false
 	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
+		if _, err := strconv.Atoi(entry.Name()); err != nil {
 			continue
 		}
-		if parent, found := statusField(filepath.Join(proc, entry.Name(), "status"), "PPid:"); found {
-			children[int(parent)] = append(children[int(parent)], pid)
-		}
-	}
-	pending := slices.Clone(children[root])
-	seen := map[int]bool{root: true}
-	for len(pending) > 0 {
-		pid := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		if seen[pid] {
+		if member, ok := processGroup(filepath.Join(proc, entry.Name(), "stat")); !ok || member != group {
 			continue
 		}
-		seen[pid] = true
-		if value, found := highWaterMark(filepath.Join(proc, strconv.Itoa(pid), "status")); found {
-			peak = max(peak, value)
+		if value, ok := highWaterMark(filepath.Join(proc, entry.Name(), "status")); ok {
+			peak, found = max(peak, value), true
 		}
-		pending = append(pending, children[pid]...)
 	}
 
-	return peak, true
+	return peak, found
+}
+
+// processGroup reads the process group ID from a /proc stat file, the third
+// field after the parenthesized command name, which may itself hold spaces
+// and parentheses.
+func processGroup(path string) (int, bool) {
+	data, err := os.ReadFile(path) //nolint:gosec // a /proc path built from a PID
+	if err != nil {
+		return 0, false
+	}
+	end := bytes.LastIndexByte(data, ')')
+	if end < 0 {
+		return 0, false
+	}
+	fields := strings.Fields(string(data[end+1:]))
+	if len(fields) < 3 {
+		return 0, false
+	}
+	group, err := strconv.Atoi(fields[2])
+	if err != nil {
+		return 0, false
+	}
+
+	return group, true
 }
 
 // highWaterMark reads VmHWM, the peak resident set, from a /proc status file.

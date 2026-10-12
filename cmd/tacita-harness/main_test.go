@@ -66,32 +66,37 @@ func TestHighWaterMark(t *testing.T) {
 	}
 }
 
-func TestTreeHighWaterMarkCoversDescendants(t *testing.T) {
+func TestGroupHighWaterMarkCoversTheWholeGroup(t *testing.T) {
 	proc := t.TempDir()
-	for pid, status := range map[string]string{
-		"10":   "PPid:\t1\nVmHWM:\t100 kB\n",
-		"11":   "PPid:\t10\nVmHWM:\t300 kB\n",
-		"12":   "PPid:\t11\nVmHWM:\t3000 kB\n",
-		"13":   "PPid:\t1\nVmHWM:\t9999 kB\n",
-		"14":   "PPid:\t10\n",
-		"self": "PPid:\t10\nVmHWM:\t9999 kB\n",
+	for pid, files := range map[string][2]string{
+		// The leader, its Git child, a member reparented to PID 1 after its
+		// parent exited, a member without a VmHWM, and two outsiders.
+		"10":   {"10 (tacita) S 1 10 10 0", "VmHWM:\t100 kB\n"},
+		"11":   {"11 (git) S 10 10 10 0", "VmHWM:\t300 kB\n"},
+		"12":   {"12 (git (pack) x) R 1 10 10 0", "VmHWM:\t3000 kB\n"},
+		"14":   {"14 (zombie) Z 10 10 10 0", ""},
+		"13":   {"13 (other) S 1 13 13 0", "VmHWM:\t9999 kB\n"},
+		"15":   {"15 (broken", "VmHWM:\t9999 kB\n"},
+		"self": {"10 (self) S 1 10 10 0", "VmHWM:\t9999 kB\n"},
 	} {
 		if err := os.Mkdir(filepath.Join(proc, pid), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(proc, pid, "status"), []byte(status), 0o600); err != nil {
-			t.Fatal(err)
+		for name, content := range map[string]string{"stat": files[0], "status": files[1]} {
+			if err := os.WriteFile(filepath.Join(proc, pid, name), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
-	if peak, ok := treeHighWaterMark(proc, 10); !ok || peak != 3000*1024 {
-		t.Errorf("treeHighWaterMark(10) = %d, %t, want the grandchild's %d", peak, ok, 3000*1024)
+	if peak, ok := groupHighWaterMark(proc, 10); !ok || peak != 3000*1024 {
+		t.Errorf("groupHighWaterMark(10) = %d, %t, want the reparented member's %d", peak, ok, 3000*1024)
 	}
-	if peak, ok := treeHighWaterMark(proc, 11); !ok || peak != 3000*1024 {
-		t.Errorf("treeHighWaterMark(11) = %d, %t", peak, ok)
+	if _, ok := groupHighWaterMark(proc, 99); ok {
+		t.Error("groupHighWaterMark(exited group) reported a value")
 	}
-	if _, ok := treeHighWaterMark(proc, 99); ok {
-		t.Error("treeHighWaterMark(exited root) reported a value")
+	if _, ok := groupHighWaterMark(filepath.Join(proc, "missing"), 10); ok {
+		t.Error("groupHighWaterMark(missing proc) reported a value")
 	}
 }
 

@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -96,12 +98,12 @@ func TestTreeHighWaterMarkCoversDescendants(t *testing.T) {
 func TestRunWatchingMemoryKillsAChildOverItsLimit(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sleep", "30")
+	cmd := groupCommand(ctx, "sleep", "30")
 	stopped := false
 	stop := func() { stopped = true; cancel() }
 
 	start := time.Now()
-	err := runWatchingMemory(cmd, stop, 1)
+	sampled, err := runWatchingMemory(cmd, stop, 1)
 
 	if !stopped || err == nil || time.Since(start) > 10*time.Second {
 		t.Fatalf("runWatchingMemory(limit 1 byte) = %v after %s, stopped %t; want the child killed", err, time.Since(start), stopped)
@@ -109,13 +111,58 @@ func TestRunWatchingMemoryKillsAChildOverItsLimit(t *testing.T) {
 	if got := exitStatus(cmd.ProcessState); got != 128+9 {
 		t.Errorf("exit status = %d, want 137 for SIGKILL", got)
 	}
+	if sampled <= 0 {
+		t.Errorf("sampled peak = %d, want the child's sample", sampled)
+	}
 
-	small := exec.CommandContext(t.Context(), "sh", "-c", "sleep 0.2")
-	if err := runWatchingMemory(small, func() { t.Error("a child within its limit was stopped") }, 1<<40); err != nil {
+	small := groupCommand(t.Context(), "sh", "-c", "sleep 0.2")
+	if _, err := runWatchingMemory(small, func() { t.Error("a child within its limit was stopped") }, 1<<40); err != nil {
 		t.Errorf("runWatchingMemory(within limit) error = %v", err)
 	}
-	if err := runWatchingMemory(exec.CommandContext(t.Context(), filepath.Join(t.TempDir(), "missing")), func() {}, 1); err == nil {
+	if err := awaitGroup(small.Process.Pid); err != nil {
+		t.Errorf("awaitGroup(exited group) error = %v", err)
+	}
+	if _, err := runWatchingMemory(groupCommand(t.Context(), filepath.Join(t.TempDir(), "missing")), func() {}, 1); err == nil {
 		t.Error("runWatchingMemory(missing binary) succeeded")
+	}
+}
+
+func TestRunWatchingMemoryKillsTheWholeProcessGroup(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// The shell waits on a background child, the shape of Tacita waiting on Git.
+	cmd := groupCommand(ctx, "sh", "-c", `sleep 30 & echo $! > "$0"; wait`, pidFile)
+	stop := func() {
+		for {
+			if data, err := os.ReadFile(pidFile); err == nil && strings.HasSuffix(string(data), "\n") {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+	}
+
+	start := time.Now()
+	if _, err := runWatchingMemory(cmd, stop, 1); err == nil {
+		t.Fatal("runWatchingMemory(limit 1 byte) succeeded")
+	}
+	if err := awaitGroup(cmd.Process.Pid); err != nil {
+		t.Fatalf("awaitGroup() error = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("the group took %s to exit", elapsed)
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descendant, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(descendant, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Errorf("descendant %d still exists after the run: %v", descendant, err)
 	}
 }
 

@@ -183,6 +183,71 @@ func TestBuildEvidenceWithALock(t *testing.T) {
 	}
 }
 
+func TestEvidenceIndexRejectsALockItsGatesForbid(t *testing.T) {
+	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
+	input := selectionInput(t, passing, passing)
+	selection, err := Select(input)
+	if err != nil || selection.Lock == nil {
+		t.Fatalf("Select() = %+v, %v", selection, err)
+	}
+	lock, err := EncodeLock(*selection.Lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid, err := BuildEvidence(EvidenceInput{Runs: recordedRuns(t, input), Selection: &selection, Lock: lock})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := map[string]func(*EvidenceFields){
+		"a failed memory gate":  func(f *EvidenceFields) { f.OperationalGates[3].MemoryOutcome = outcomeFail },
+		"a failed elapsed gate": func(f *EvidenceFields) { f.OperationalGates[0].ElapsedOutcome = outcomeFail },
+		"a failed control":      func(f *EvidenceFields) { f.AnalyticalGates[5].Outcome = outcomeFail },
+		"a development report without passing configurations": func(f *EvidenceFields) {
+			zero := 0
+			f.AnalyticalGates[1].PassingConfigurations, f.AnalyticalGates[1].Outcome = &zero, outcomeFail
+		},
+		"a missing report": func(f *EvidenceFields) {
+			f.Artifacts = slices.DeleteFunc(f.Artifacts, func(a Artifact) bool {
+				return a.Kind == ArtifactAnalyticalReport && *a.Run == 2 && *a.RepositoryObjectID == Proficiency().Commit
+			})
+			f.AnalyticalGates = f.AnalyticalGates[:7]
+		},
+	}
+	for name, mutate := range tests {
+		fields := valid.EvidenceFields
+		fields.Artifacts = slices.Clone(fields.Artifacts)
+		fields.AnalyticalGates = slices.Clone(fields.AnalyticalGates)
+		fields.OperationalGates = slices.Clone(fields.OperationalGates)
+		mutate(&fields)
+		if _, err := NewEvidenceIndex(fields); !errors.Is(err, ErrEncode) {
+			t.Errorf("%s: NewEvidenceIndex() error = %v, want ErrEncode", name, err)
+		}
+	}
+}
+
+func TestBuildEvidenceNamesTheSummarysFirstLaneFailure(t *testing.T) {
+	input := selectionInput(t,
+		map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}},
+		map[string]keys{unitLoose: {fail: true}},
+	)
+	// Reason order would name control_failed; repository order names
+	// golang/tools first.
+	selection := Selection{LaneFailures: []LaneFailure{
+		{Repository: Kubernetes().Name, Reason: LaneControlFailed},
+		{Repository: GolangTools().Name, Reason: LaneOperationalLimit},
+	}}
+
+	index, err := BuildEvidence(EvidenceInput{Runs: recordedRuns(t, input), Selection: &selection})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.Fields(strings.Split(selection.Summary(), "\n")[1])
+	if got := *index.Lanes[0].Reason; got != LaneOperationalLimit || first[2] != got {
+		t.Errorf("lane reason %s, summary's first failure %v", got, first)
+	}
+}
+
 func TestBuildEvidenceRecordsLaneFailuresAndMissingReports(t *testing.T) {
 	passing := map[string]keys{unitLoose: {gain: 0.3, coverage: 0.1, jaccard: 0.6}}
 	input := selectionInput(t, passing, passing)
@@ -347,6 +412,13 @@ func TestEvidenceIndexRejectsInvalidContents(t *testing.T) {
 		},
 		"an inferred lane failing as not run": func(f *EvidenceFields) { f.Lanes[0].Reason = text(ReasonLaneNotRun) },
 		"a failed profile lane":               func(f *EvidenceFields) { f.Lanes[1].Outcome = outcomeFail },
+		"a review manifest before any review": func(f *EvidenceFields) {
+			at := slices.IndexFunc(f.Artifacts, func(a Artifact) bool { return a.Kind == ArtifactOperationalSidecar })
+			commit, run := GolangTools().Commit, 1
+			f.Artifacts = slices.Insert(f.Artifacts, at, Artifact{
+				Kind: ArtifactReviewManifest, RepositoryObjectID: &commit, Run: &run, Digest: strings.Repeat("b", 64),
+			})
+		},
 		"a profile lane awaiting the holdout": func(f *EvidenceFields) {
 			f.Lanes[1].Reason = text(ReasonHoldoutNotRun)
 		},

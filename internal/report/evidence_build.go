@@ -130,8 +130,8 @@ func analyticalGate(run RunRecord) (AnalyticalGate, error) {
 	return gate, nil
 }
 
-// inferredLane fails without a lock, giving the first lane failure or that no
-// configuration was selectable, and is inconclusive with one until the
+// inferredLane fails without a lock, giving the first lane failure in
+// repository order or that no configuration was selectable, and is inconclusive with one until the
 // configuration holdout runs.
 func inferredLane(input EvidenceInput) LaneOutcome {
 	lane := LaneOutcome{Lane: LaneInferred, Outcome: outcomeFail}
@@ -141,16 +141,23 @@ func inferredLane(input EvidenceInput) LaneOutcome {
 	case input.Selection == nil:
 		lane.Reason = text(LaneReportNotComplete)
 	case len(input.Selection.LaneFailures) > 0:
-		failures := slices.Clone(input.Selection.LaneFailures)
-		slices.SortFunc(failures, func(left, right LaneFailure) int {
-			return cmp.Or(cmp.Compare(left.Reason, right.Reason), cmp.Compare(left.Repository, right.Repository))
-		})
-		lane.Reason = text(failures[0].Reason)
+		lane.Reason = text(sortedLaneFailures(input.Selection.LaneFailures)[0].Reason)
 	default:
 		lane.Reason = text(ReasonNoSelectableConfiguration)
 	}
 
 	return lane
+}
+
+// sortedLaneFailures orders lane failures by repository, then reason, the
+// order the selection summary prints and the evidence lane takes its first
+// failure from.
+func sortedLaneFailures(failures []LaneFailure) []LaneFailure {
+	sorted := slices.Clone(failures)
+	slices.SortFunc(sorted, func(left, right LaneFailure) int {
+		return cmp.Or(cmp.Compare(left.Repository, right.Repository), cmp.Compare(left.Reason, right.Reason))
+	})
+	return sorted
 }
 
 func passOrFail(passed bool) string {
@@ -171,11 +178,7 @@ func (s Selection) Summary() string {
 	var builder strings.Builder
 	builder.WriteString("no selectable configuration\n")
 
-	failures := slices.Clone(s.LaneFailures)
-	slices.SortFunc(failures, func(left, right LaneFailure) int {
-		return cmp.Or(cmp.Compare(left.Repository, right.Repository), cmp.Compare(left.Reason, right.Reason))
-	})
-	for _, failure := range failures {
+	for _, failure := range sortedLaneFailures(s.LaneFailures) {
 		fmt.Fprintf(&builder, "lane_failure %s %s\n", failure.Repository, failure.Reason)
 	}
 

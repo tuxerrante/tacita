@@ -194,8 +194,9 @@ func record(ctx context.Context, tacita string, runner string, out string, plan 
 
 // calibrateOnce runs one calibration as a child process and records its
 // report and operational sidecar. The child's own elapsed budget fires first;
-// the harness kills it only after a margin, as soon as its output overflows a
-// bound, or as soon as its peak resident set exceeds the frozen memory budget.
+// the harness kills its process group only after a margin, as soon as its
+// output overflows a bound, or as soon as a peak resident set in the group
+// exceeds the frozen memory budget.
 func calibrateOnce(
 	ctx context.Context,
 	tacita string,
@@ -208,14 +209,17 @@ func calibrateOnce(
 
 	stdout := &limitedBuffer{limit: maxStdout, stop: cancel}
 	stderr := &limitedBuffer{limit: maxStderr, stop: cancel}
-	cmd := exec.CommandContext(ctx, tacita, "calibrate", "--revision", planned.repository.Commit, planned.path) //nolint:gosec // operator-named binary
+	cmd := groupCommand(ctx, tacita, "calibrate", "--revision", planned.repository.Commit, planned.path)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 
 	start := time.Now()
-	runErr := runWatchingMemory(cmd, cancel, report.PeakMemoryLimit)
+	sampled, runErr := runWatchingMemory(cmd, cancel, report.PeakMemoryLimit)
 	elapsed := time.Since(start)
 	if cmd.ProcessState == nil {
 		return report.RunRecord{}, fmt.Errorf("starting %s: %w", tacita, runErr)
+	}
+	if err := awaitGroup(cmd.Process.Pid); err != nil {
+		return report.RunRecord{}, err
 	}
 
 	name := fmt.Sprintf("%s.%d", flagName(planned.repository), planned.run)
@@ -223,7 +227,7 @@ func calibrateOnce(
 	fields := report.OperationFields{
 		Schema:            report.OperationSchema,
 		ElapsedDurationNS: elapsed.Nanoseconds(),
-		PeakResidentBytes: peakResidentBytes(cmd.ProcessState),
+		PeakResidentBytes: max(peakResidentBytes(cmd.ProcessState), sampled),
 		ProcessExitStatus: exitStatus(cmd.ProcessState),
 		ReferenceRunner:   runner,
 	}
@@ -261,30 +265,73 @@ func calibrateOnce(
 // memoryPoll is how often the harness samples the run's peak resident set.
 const memoryPoll = 50 * time.Millisecond
 
+// groupExitWait bounds how long a killed process group may take to exit.
+const groupExitWait = 30 * time.Second
+
+// groupCommand runs name in a new process group whose leader is the child, so
+// cancelling ctx kills the child and every descendant still in the group, not
+// the child alone.
+func groupCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // operator-named binary
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	return cmd
+}
+
 // runWatchingMemory starts cmd and waits for it while sampling the peak
-// resident set of the child and its descendants from /proc, the processes
-// whose maximum ru_maxrss reports once they are waited for. When a peak
+// resident set of the child and its descendants from /proc. When a peak
 // exceeds limit, the frozen memory budget, it calls stop, which kills the
-// child through its context. One goroutine waits for the child; it ends when
-// the child exits, and its result is always received before returning.
-func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) error {
+// child's process group through its context. It returns the largest sample,
+// which covers a descendant killed before the child could wait for it and so
+// missing from ru_maxrss. One goroutine waits for the child; it ends when the
+// child exits, and its result is always received before returning.
+func runWatchingMemory(cmd *exec.Cmd, stop context.CancelFunc, limit int64) (int64, error) {
 	if err := cmd.Start(); err != nil {
-		return err
+		return 0, err
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
+	var sampled int64
 	ticker := time.NewTicker(memoryPoll)
 	defer ticker.Stop()
 	for {
 		select {
 		case err := <-done:
-			return err
+			return sampled, err
 		case <-ticker.C:
-			if peak, ok := treeHighWaterMark("/proc", cmd.Process.Pid); ok && peak > limit {
+			peak, ok := treeHighWaterMark("/proc", cmd.Process.Pid)
+			if !ok {
+				continue
+			}
+			sampled = max(sampled, peak)
+			if peak > limit {
 				stop()
 			}
 		}
+	}
+}
+
+// awaitGroup kills whatever remains of the process group led by a child that
+// has been waited for, reaps members reparented to the harness, and waits
+// until no member remains, so no descendant of one run outlives it.
+func awaitGroup(group int) error {
+	_ = syscall.Kill(-group, syscall.SIGKILL) // ESRCH: the group already exited
+	deadline := time.Now().Add(groupExitWait)
+	for {
+		for {
+			pid, err := syscall.Wait4(-group, nil, syscall.WNOHANG, nil)
+			if pid <= 0 || err != nil {
+				break
+			}
+		}
+		if err := syscall.Kill(-group, 0); errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("process group %d outlived its run by %s", group, groupExitWait)
+		}
+		time.Sleep(memoryPoll)
 	}
 }
 

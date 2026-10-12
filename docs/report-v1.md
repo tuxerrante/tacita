@@ -483,10 +483,12 @@ The field names are `schema`, `experiment_id` (`tacita-experiment-1`),
   20-minute and 2 GiB budgets, one per operational sidecar artifact in the
   same order. Every analytical report has a sidecar for the same run, and runs
   are numbered 1 and 2;
-- `product_review_gates` stays empty until a blinded review exists;
+- `product_review_gates` stays empty, and no `review_manifest` or
+  `review_result` artifact is recorded, until a blinded review exists;
 - `lanes` holds `inferred`, then `profile`, each with `outcome` and a `reason`
   that is `null` only for `pass`. The inferred lane fails without a lock, with
-  the first lane failure or `no_selectable_configuration`, and is
+  the first lane failure in repository-then-reason order, the order the
+  selection summary prints, or `no_selectable_configuration`, and is
   `inconclusive` with `holdout_not_run` once a lock exists. The profile lane
   is `inconclusive` with `not_run` until Milestone 4;
 - `experiment_outcome` is the lanes' conjunction.
@@ -494,6 +496,9 @@ The field names are `schema`, `experiment_id` (`tacita-experiment-1`),
 Sidecars cover every corpus repository's runs 1 and 2. Until a blinded review
 exists, the profile lane is `inconclusive` with `not_run`, and the inferred
 lane fails, with a lane failure reason, exactly when the index holds no lock.
+A lock is accepted only beside a report for every run and passing analytical,
+elapsed, and memory gates, the conditions under which the selector can write
+one.
 
 The evidence-index digest is SHA-256 over the preceding canonical fields.
 The index is canonical for a recorded run, but two executions may have

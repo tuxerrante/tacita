@@ -248,8 +248,10 @@ func validateEvidenceIndex(fields EvidenceFields) error {
 			return invalid("evidence operational gate %d does not match its sidecar", index)
 		}
 	}
-	if len(fields.ProductReviewGates) > 0 {
-		return invalid("product review gates are recorded only after a review exists")
+	if len(fields.ProductReviewGates) > 0 || slices.ContainsFunc(fields.Artifacts, func(artifact Artifact) bool {
+		return artifact.Kind == ArtifactReviewManifest || artifact.Kind == ArtifactReviewResult
+	}) {
+		return invalid("product review gates and artifacts are recorded only after a review exists")
 	}
 
 	lanes := make([]string, len(fields.Lanes))
@@ -305,9 +307,29 @@ var inferredFailureReasons = []string{
 	LaneOperationalLimit, LaneReportNotComplete,
 }
 
+// gatesAllowLock reports whether the recorded gates allow a lock: a report for
+// every run, and every analytical, elapsed, and memory gate passing.
+func gatesAllowLock(fields EvidenceFields) bool {
+	if len(fields.AnalyticalGates) != len(fields.OperationalGates) {
+		return false
+	}
+	for _, gate := range fields.AnalyticalGates {
+		if gate.Outcome != outcomePass {
+			return false
+		}
+	}
+	for _, gate := range fields.OperationalGates {
+		if gate.ElapsedOutcome != outcomePass || gate.MemoryOutcome != outcomePass {
+			return false
+		}
+	}
+	return true
+}
+
 // validateLaneStates pins the lanes to what a calibration index can record
 // before any review: the profile lane has not run, and the inferred lane
-// fails without a lock and is inconclusive, awaiting the holdout, with one.
+// fails without a lock and is inconclusive, awaiting the holdout, with one
+// that every gate allowed.
 func validateLaneStates(fields EvidenceFields) error {
 	profile := fields.Lanes[1]
 	if profile.Outcome != outcomeInconclusive || reasonOf(profile) != ReasonLaneNotRun {
@@ -321,6 +343,8 @@ func validateLaneStates(fields EvidenceFields) error {
 	switch {
 	case locked && (inferred.Outcome != outcomeInconclusive || reasonOf(inferred) != ReasonHoldoutNotRun):
 		return invalid("evidence inferred lane with a lock must be inconclusive with %s", ReasonHoldoutNotRun)
+	case locked && !gatesAllowLock(fields):
+		return invalid("evidence holds a lock that its gates could not have selected")
 	case !locked && (inferred.Outcome != outcomeFail || !slices.Contains(inferredFailureReasons, reasonOf(inferred))):
 		return invalid("evidence inferred lane without a lock must fail with a lane failure reason")
 	}

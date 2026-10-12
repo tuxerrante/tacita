@@ -418,8 +418,9 @@ Shallow history is rejected in the first experiment.
 
 ### Frozen Git data flow
 
-The success path uses two bounded Git commands with the frozen environment,
-repository target, and `-c` overrides:
+The success path's event flow uses two bounded Git commands with the frozen
+environment, repository target, and `-c` overrides; a third bounded scalar
+command, described below, counts reachable commits for the report:
 
 ```text
 git <repository-target> rev-list \

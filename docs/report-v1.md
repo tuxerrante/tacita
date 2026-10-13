@@ -177,6 +177,25 @@ Gate records contain `configuration_id`, `id`, `outcome`, `metric`, `operator`,
 `threshold`, and `reason`, in that order. Profile-wide gates use `null`
 configuration ID. Outcomes are `pass`, `fail`, or `inconclusive`.
 
+Stable development gate IDs are:
+
+```text
+adjacent_jaccard
+coverage
+cutoff_display
+evaluation_windows_covered
+frequent_consequent_gain
+no_history_control
+shuffled_control_gain
+unweighted_gain
+```
+
+Each names one frozen development engineering requirement decided on one
+repository. `no_history_control` is a repository gate with `null`
+configuration ID. `unweighted_gain` is omitted for a `unit` configuration,
+whose baseline is itself. A gate over both micro and macro adherence reports
+the smaller of the two differences as its metric.
+
 Stable undefined-metric reasons are:
 
 ```text

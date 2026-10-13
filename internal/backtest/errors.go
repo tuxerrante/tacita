@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/tuxerrante/tacita/internal/gitlog"
+	"github.com/tuxerrante/tacita/internal/mining"
 )
 
 var (
@@ -23,6 +24,15 @@ var (
 	// ErrCutoffCount identifies evaluation input whose cutoffs and windows do
 	// not pair one to one.
 	ErrCutoffCount = errors.New("cutoffs do not match evaluation windows")
+	// ErrOutcomeMismatch identifies chronological and shuffled outcomes that do
+	// not cover the same configurations in the same order.
+	ErrOutcomeMismatch = errors.New("chronological and shuffled outcomes do not match")
+	// ErrMissingCounterpart identifies a weighted configuration whose unit
+	// counterpart was not evaluated.
+	ErrMissingCounterpart = errors.New("unweighted counterpart not evaluated")
+	// ErrOutcomeShape identifies an outcome whose per-cutoff lists do not
+	// describe the same, non-empty set of cutoffs.
+	ErrOutcomeShape = errors.New("outcome cutoffs do not match")
 )
 
 // EventCountError reports an event count outside two to the frozen event cap.
@@ -101,4 +111,60 @@ func (e *CutoffCountError) Error() string {
 
 func (e *CutoffCountError) Is(target error) bool {
 	return target == ErrCutoffCount
+}
+
+// OutcomeMismatchError reports chronological and shuffled outcomes of
+// different lengths or configuration order.
+type OutcomeMismatchError struct {
+	Chronological int
+	Shuffled      int
+}
+
+func (e *OutcomeMismatchError) Error() string {
+	return fmt.Sprintf(
+		"%d chronological and %d shuffled outcomes do not cover the same configurations",
+		e.Chronological,
+		e.Shuffled,
+	)
+}
+
+func (e *OutcomeMismatchError) Is(target error) bool {
+	return target == ErrOutcomeMismatch
+}
+
+// MissingCounterpartError reports a unit configuration that a weighted
+// configuration needs as its unweighted baseline but that was not evaluated.
+type MissingCounterpartError struct {
+	Configuration mining.Configuration
+}
+
+func (e *MissingCounterpartError) Error() string {
+	return fmt.Sprintf("unweighted counterpart %s was not evaluated", e.Configuration.ID())
+}
+
+func (e *MissingCounterpartError) Is(target error) bool {
+	return target == ErrMissingCounterpart
+}
+
+// OutcomeShapeError reports an outcome without cutoffs or whose displays,
+// covered counts, and transaction counts disagree in length.
+type OutcomeShapeError struct {
+	Configuration mining.Configuration
+	Displays      int
+	Covered       int
+	Transactions  int
+}
+
+func (e *OutcomeShapeError) Error() string {
+	return fmt.Sprintf(
+		"outcome %s has %d displays, %d covered counts, and %d transaction counts",
+		e.Configuration.ID(),
+		e.Displays,
+		e.Covered,
+		e.Transactions,
+	)
+}
+
+func (e *OutcomeShapeError) Is(target error) bool {
+	return target == ErrOutcomeShape
 }

@@ -78,13 +78,15 @@ Implemented:
 - frequent-consequent and unweighted baselines for every configuration, the
   frozen hash-shuffled event order replayed through the same fold and
   evaluation, and the no-history control;
+- per-configuration development gate outcomes for every frozen requirement a
+  single repository decides, combined conjunctively, and the no-history gate;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- engineering gate decisions;
+- the development selector and configuration lock;
 - profile evaluation;
 - report schema or rendering;
 - proposal, ratification, manifests, or checking.

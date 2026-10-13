@@ -418,8 +418,9 @@ Shallow history is rejected in the first experiment.
 
 ### Frozen Git data flow
 
-The success path uses two bounded Git commands with the frozen environment,
-repository target, and `-c` overrides:
+The success path's event flow uses two bounded Git commands with the frozen
+environment, repository target, and `-c` overrides; a third bounded scalar
+command, described below, counts reachable commits for the report:
 
 ```text
 git <repository-target> rev-list \
@@ -446,6 +447,24 @@ git <repository-target> cat-file \
 This failure-only command does not contribute events or paths. Its output is
 used solely for the conservative incomplete-repository classification described
 in [supported experiment environment](#supported-experiment-environment).
+
+The report's reproducibility record also needs the count of commits reachable
+from the resolved commit, merged branches included. One bounded scalar command
+supplies it after the first-parent walk succeeds:
+
+```text
+git <repository-target> rev-list --count <resolved-object-id>
+```
+
+It reads commit objects only, contributes no event or path, and its output must
+be one positive decimal count without leading zeros followed by one LF. A
+successful first-parent walk does not prove that commits reachable only through
+secondary parents exist, so a failed count runs the same bounded diagnostic
+over the full walk, `rev-list --quiet --missing=print <resolved-object-id>`
+with the batch check, and reports an incomplete repository only when every
+reported object is confirmed missing. The
+`git version` output that environment validation already reads supplies the
+report's Git version, its third field.
 
 The first command is line-oriented only because every field is a validated
 full hexadecimal object ID. It defines event order, first parent, and event

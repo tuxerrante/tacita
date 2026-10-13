@@ -66,18 +66,20 @@ func validatePlatform(goos string, goarch string) error {
 	return nil
 }
 
-func validateGitVersion(ctx context.Context) error {
+// validateGitVersion requires a supported Git and returns its version
+// string, the third field of `git version`, for the report's tool record.
+func validateGitVersion(ctx context.Context) (string, error) {
 	output, err := runGit(ctx, "checking Git version", maxScalarOutput, "version")
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	major, minor, err := parseGitVersion(output)
+	version, major, minor, err := parseGitVersion(output)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !supportedGitVersion(major, minor) {
-		return fmt.Errorf(
+		return "", fmt.Errorf(
 			"%w: got %d.%d, require %d.%d or newer",
 			ErrUnsupportedGitVersion,
 			major,
@@ -86,36 +88,36 @@ func validateGitVersion(ctx context.Context) error {
 			minimumGitMinor,
 		)
 	}
-	return nil
+	return version, nil
 }
 
-func parseGitVersion(output []byte) (int, int, error) {
+func parseGitVersion(output []byte) (string, int, int, error) {
 	if len(output) == 0 || output[len(output)-1] != '\n' ||
 		strings.Count(string(output), "\n") != 1 {
-		return 0, 0, fmt.Errorf("%w: unexpected Git version framing", ErrMalformedGitOutput)
+		return "", 0, 0, fmt.Errorf("%w: unexpected Git version framing", ErrMalformedGitOutput)
 	}
 
 	line := strings.TrimSuffix(string(output), "\n")
 	fields := strings.Fields(line)
 	if len(fields) < 3 || fields[0] != "git" || fields[1] != "version" {
-		return 0, 0, fmt.Errorf("%w: unexpected Git version", ErrMalformedGitOutput)
+		return "", 0, 0, fmt.Errorf("%w: unexpected Git version", ErrMalformedGitOutput)
 	}
 
 	parts := strings.Split(fields[2], ".")
 	if len(parts) < 2 {
-		return 0, 0, fmt.Errorf("%w: unexpected Git version", ErrMalformedGitOutput)
+		return "", 0, 0, fmt.Errorf("%w: unexpected Git version", ErrMalformedGitOutput)
 	}
 
 	major, err := strconv.Atoi(parts[0])
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: unexpected Git major version", ErrMalformedGitOutput)
+		return "", 0, 0, fmt.Errorf("%w: unexpected Git major version", ErrMalformedGitOutput)
 	}
 	minor, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: unexpected Git minor version", ErrMalformedGitOutput)
+		return "", 0, 0, fmt.Errorf("%w: unexpected Git minor version", ErrMalformedGitOutput)
 	}
 
-	return major, minor, nil
+	return fields[2], major, minor, nil
 }
 
 func supportedGitVersion(major int, minor int) bool {

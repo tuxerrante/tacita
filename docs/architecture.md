@@ -642,6 +642,27 @@ the behavior the implementation pins:
    ranking has ties and Kendall tau-b equals concordant minus discordant pairs
    over all pairs.
 
+Baselines and controls reuse the same fold, display, and evaluation:
+
+- the frequent-consequent baseline keeps every displayed antecedent slot and
+  replaces its consequent with the most prevalent other component of that
+  cutoff's training aggregate, so it needs only the two most prevalent
+  components; a displayed candidate `A -> B` proves a second component exists;
+- the unweighted baseline of a non-unit configuration is the evaluation of the
+  `unit` configuration with the same thresholds, already derived from the same
+  snapshots, and a `unit` configuration reports `identical_baseline`;
+- the hash-shuffled control orders every chain event, root and excluded events
+  included, by the frozen key over the frozen repository commit and the event
+  object ID, moves each retained transaction to its event's new position, and
+  runs the same fold, display, and evaluation over that ordering;
+- the no-history control derives every configuration from an empty training
+  aggregate and must display zero candidates.
+
+The third point resolves two gaps the frozen text leaves open: which object ID
+is the "frozen repository object ID", and whether excluded events take part in
+the shuffled order. Both are ratified here and are the behavior the
+implementation pins.
+
 This strategy depends on the frozen no-decay decision. If a later experiment
 introduces temporal decay, retained weights change as the cutoff advances, the
 running-total fold is no longer valid, and this section must be revisited

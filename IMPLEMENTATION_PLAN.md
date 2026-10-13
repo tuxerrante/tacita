@@ -46,6 +46,10 @@ Implemented:
   repository's canonical calibration report and refuses every other commit,
   and `tacita select`, which writes the development lock or the lane failure
   summary;
+- the reference environment image with Go 1.27.0 and Git 2.55.0, and
+  `tacita-harness`, which runs calibration as child processes, records
+  operational sidecars from outside Tacita, applies the selector, and writes
+  the evidence index;
 - process-boundary exit codes and signal cancellation;
 - in-memory CLI tests;
 - supported Linux/amd64, Git 2.43+, and SHA-1 validation;
@@ -97,7 +101,7 @@ Implemented:
 
 Not implemented:
 
-- the reference-environment run and the recorded development outcome;
+- the recorded reference-run development outcome;
 - profile evaluation;
 - text rendering;
 - proposal, ratification, manifests, or checking.

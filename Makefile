@@ -24,7 +24,7 @@ include .bingo/Variables.mk
 
 LINT_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD 2>/dev/null)
 
-.PHONY: all help tools fmt fmt-check markdown-fmt-check markdown-check markdown-gate vet lint lint-new test test-race fuzz coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run clean
+.PHONY: all help tools fmt fmt-check markdown-fmt-check markdown-check markdown-gate vet lint lint-new test test-race fuzz coverage build check quality-gate security gitleaks pre-commit-install pre-commit-run reference-image reference-run clean
 .NOTPARALLEL: check markdown-gate quality-gate pre-commit-run
 
 all: check ## Run the incremental local validation gate
@@ -160,6 +160,19 @@ pre-commit-install: tools ## Install the repository Git pre-commit hook
 pre-commit-run: tools gitleaks ## Run the complete repository pre-commit suite
 	@command -v pre-commit >/dev/null || { echo "pre-commit is required to run hooks" >&2; exit 1; }
 	pre-commit run --all-files
+
+REFERENCE_IMAGE ?= tacita-reference:git-2.55.0
+
+reference-image: ## Build the frozen linux/amd64 reference image (Go 1.27.0, Git 2.55.0)
+	docker build --platform linux/amd64 -t "$(REFERENCE_IMAGE)" reference
+
+reference-run: ## Calibrate the frozen corpus in the reference image; set CORPUS and OUT
+	@if [[ -z "$(CORPUS)" || -z "$(OUT)" ]]; then echo "set CORPUS to the bare clones and OUT to an empty directory" >&2; exit 1; fi
+	docker run --rm --platform linux/amd64 --cpus 4 --memory 8g --network none \
+		--user "$$(id -u):$$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/go-cache -e GOPATH=/tmp/go \
+		-e GOFLAGS=-buildvcs=false -e GOPROXY=off -e REFERENCE_RUNNER \
+		-v "$(CURDIR):/src:ro" -v "$(CORPUS):/corpus:ro" -v "$(OUT):/out" -w /src \
+		"$(REFERENCE_IMAGE)" reference/run.sh
 
 clean: ## Remove generated local artifacts
 	rm -rf -- "$(BIN_DIR)" "$(TOOLS_DIR)" "$(UV_TOOLS_DIR)" "$(RUMDL_CACHE_DIR)"

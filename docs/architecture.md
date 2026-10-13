@@ -770,6 +770,40 @@ enforced by the external harness. A harness kill is recorded through sidecar
 exit status; canonical `failure.observed` remains `null` for elapsed or memory
 limits not observed by Tacita itself.
 
+The reference environment is [`reference/Dockerfile`](../reference/Dockerfile):
+the Go 1.27.0 image pinned by digest, with Git 2.55.0 built from the kernel.org
+release tarball after its checksum is verified against the published list.
+Git's default build includes its Rust core, so the build stage installs Cargo.
+`make reference-image` builds it, and `make reference-run CORPUS=<dir>
+OUT=<dir>` runs [`reference/run.sh`](../reference/run.sh) in it with four CPUs,
+8 GiB, and no network, as the invoking user so the written artifacts stay
+readable on the host. `CORPUS` holds the bare clones `tools.git`,
+`kubernetes.git`, `go-starter.git`, and `proficiency.git`.
+
+The script builds `tacita` and `tacita-harness` with `CGO_ENABLED=0 -trimpath`,
+then the harness runs `tacita calibrate` as a child process twice per corpus
+repository into an empty output directory, naming every artifact after the
+repository's corpus identity rather than its path. It measures each run's
+elapsed time with the monotonic clock and its peak resident set, and records
+both in the run's operational sidecar, so the measurement never enters the
+analytical report. The child leads its own process group. While it runs, the
+harness samples the `VmHWM` of every process in that group, including one
+reparented after its parent exited, from `/proc` every 50 ms and kills the whole
+group once any of them exceeds 2 GiB; it also kills the group at the first byte
+past the report or diagnostic output bound, or after the elapsed budget plus a
+five-minute margin. After the child exits, the harness kills anything left in
+the group and waits until no member remains, so no Git subprocess outlives its
+run. The recorded peak is the larger of the child's `ru_maxrss`, which on Linux
+covers the descendants it waited for, and the largest sample, which covers a
+member killed before it was waited for. A descendant that leaves the group is
+outside both; Git does not. A killed child records 128 plus the signal as its
+exit status. Non-empty diagnostic output is written beside the sidecar, which
+names it in `diagnostic_paths`, and a run that writes no report keeps a sidecar
+with a `null` report digest. The harness then applies the selector when every
+run wrote a report, using the sidecars' exit statuses and elapsed-time and
+memory outcomes as the operational verdict, and writes the lock or the selection
+summary and the evidence index.
+
 ## Reports
 
 The frozen machine contract is [`report-v1.md`](report-v1.md). JSON is

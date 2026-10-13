@@ -1,0 +1,361 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/tuxerrante/tacita/internal/report"
+)
+
+func TestRunRequiresEveryFlag(t *testing.T) {
+	for _, args := range [][]string{
+		nil,
+		{"--unknown"},
+		{"--tacita", "t", "--runner", "r", "--out", "o"},
+		{"--tacita", "t", "--runner", "r", "--out", "o", "--golang-tools", "a", "--kubernetes", "b", "--go-starter", "c"},
+		{"--tacita", "t", "--runner", "r", "--out", "o", "extra"},
+	} {
+		if _, err := run(t.Context(), args); err == nil || !strings.Contains(err.Error(), "usage: tacita-harness") {
+			t.Errorf("run(%q) error = %v, want usage", args, err)
+		}
+	}
+}
+
+func TestLimitedBufferStopsAtItsLimit(t *testing.T) {
+	stops := 0
+	buffer := &limitedBuffer{limit: 4, stop: func() { stops++ }}
+
+	n, err := buffer.Write([]byte("abc"))
+	if n != 3 || err != nil || buffer.overflowed {
+		t.Fatalf("Write(abc) = %d, %v, overflowed %t", n, err, buffer.overflowed)
+	}
+	n, err = buffer.Write([]byte("def"))
+	if n != 1 || err != nil || !buffer.overflowed || buffer.String() != "abcd" {
+		t.Errorf("Write(def) = %d, %v, overflowed %t, buffer %q", n, err, buffer.overflowed, buffer.String())
+	}
+	if _, _ = buffer.Write([]byte("g")); stops != 1 {
+		t.Errorf("stop called %d times, want once at the first overflow", stops)
+	}
+}
+
+func TestHighWaterMark(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "status")
+	if err := os.WriteFile(path, []byte("Name:\ttacita\nVmHWM:\t  2048 kB\nVmRSS:\t 1024 kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if peak, ok := highWaterMark(path); !ok || peak != 2048*1024 {
+		t.Errorf("highWaterMark() = %d, %t, want %d", peak, ok, 2048*1024)
+	}
+	if _, ok := highWaterMark(filepath.Join(t.TempDir(), "missing")); ok {
+		t.Error("highWaterMark(missing) reported a value")
+	}
+	if err := os.WriteFile(path, []byte("VmHWM:\tlots kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := highWaterMark(path); ok {
+		t.Error("highWaterMark(malformed) reported a value")
+	}
+}
+
+func TestGroupHighWaterMarkCoversTheWholeGroup(t *testing.T) {
+	proc := t.TempDir()
+	for pid, files := range map[string][2]string{
+		// The leader, its Git child, a member reparented to PID 1 after its
+		// parent exited, a member without a VmHWM, and two outsiders.
+		"10":   {"10 (tacita) S 1 10 10 0", "VmHWM:\t100 kB\n"},
+		"11":   {"11 (git) S 10 10 10 0", "VmHWM:\t300 kB\n"},
+		"12":   {"12 (git (pack) x) R 1 10 10 0", "VmHWM:\t3000 kB\n"},
+		"14":   {"14 (zombie) Z 10 10 10 0", ""},
+		"13":   {"13 (other) S 1 13 13 0", "VmHWM:\t9999 kB\n"},
+		"15":   {"15 (broken", "VmHWM:\t9999 kB\n"},
+		"self": {"10 (self) S 1 10 10 0", "VmHWM:\t9999 kB\n"},
+	} {
+		if err := os.Mkdir(filepath.Join(proc, pid), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range map[string]string{"stat": files[0], "status": files[1]} {
+			if err := os.WriteFile(filepath.Join(proc, pid, name), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	if peak, ok := groupHighWaterMark(proc, 10); !ok || peak != 3000*1024 {
+		t.Errorf("groupHighWaterMark(10) = %d, %t, want the reparented member's %d", peak, ok, 3000*1024)
+	}
+	if _, ok := groupHighWaterMark(proc, 99); ok {
+		t.Error("groupHighWaterMark(exited group) reported a value")
+	}
+	if _, ok := groupHighWaterMark(filepath.Join(proc, "missing"), 10); ok {
+		t.Error("groupHighWaterMark(missing proc) reported a value")
+	}
+}
+
+func TestRunWatchingMemoryKillsAChildOverItsLimit(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cmd := groupCommand(ctx, "sleep", "30")
+	stopped := false
+	stop := func() { stopped = true; cancel() }
+
+	start := time.Now()
+	sampled, err := runWatchingMemory(cmd, stop, 1)
+
+	if !stopped || err == nil || time.Since(start) > 10*time.Second {
+		t.Fatalf("runWatchingMemory(limit 1 byte) = %v after %s, stopped %t; want the child killed", err, time.Since(start), stopped)
+	}
+	if got := exitStatus(cmd.ProcessState); got != 128+9 {
+		t.Errorf("exit status = %d, want 137 for SIGKILL", got)
+	}
+	if sampled <= 0 {
+		t.Errorf("sampled peak = %d, want the child's sample", sampled)
+	}
+
+	small := groupCommand(t.Context(), "sh", "-c", "sleep 0.2")
+	if _, err := runWatchingMemory(small, func() { t.Error("a child within its limit was stopped") }, 1<<40); err != nil {
+		t.Errorf("runWatchingMemory(within limit) error = %v", err)
+	}
+	if err := awaitGroup(small.Process.Pid); err != nil {
+		t.Errorf("awaitGroup(exited group) error = %v", err)
+	}
+	if _, err := runWatchingMemory(groupCommand(t.Context(), filepath.Join(t.TempDir(), "missing")), func() {}, 1); err == nil {
+		t.Error("runWatchingMemory(missing binary) succeeded")
+	}
+}
+
+func TestRunWatchingMemoryKillsTheWholeProcessGroup(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// The shell waits on a background child, the shape of Tacita waiting on Git.
+	cmd := groupCommand(ctx, "sh", "-c", `sleep 30 & echo $! > "$0"; wait`, pidFile)
+	stop := func() {
+		for {
+			if data, err := os.ReadFile(pidFile); err == nil && strings.HasSuffix(string(data), "\n") {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+	}
+
+	start := time.Now()
+	if _, err := runWatchingMemory(cmd, stop, 1); err == nil {
+		t.Fatal("runWatchingMemory(limit 1 byte) succeeded")
+	}
+	if err := awaitGroup(cmd.Process.Pid); err != nil {
+		t.Fatalf("awaitGroup() error = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("the group took %s to exit", elapsed)
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descendant, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(descendant, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Errorf("descendant %d still exists after the run: %v", descendant, err)
+	}
+}
+
+func TestHarnessNamesArtifactsByCorpusIdentity(t *testing.T) {
+	dir := t.TempDir()
+	tacita := fakeTacita(t, dir, "echo refused >&2; exit 1")
+	out := filepath.Join(dir, "out")
+	args := []string{
+		"--tacita", tacita, "--runner", "test runner", "--out", out,
+		"--golang-tools", "/a/repo.git", "--kubernetes", "/b/repo.git",
+		"--go-starter", "/c/repo.git", "--proficiency", "/d/repo.git",
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := realMain(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("realMain() = %d, stderr %q", code, stderr.String())
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sidecars := 0
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".operation.json") {
+			sidecars++
+		}
+	}
+	if sidecars != 8 {
+		t.Errorf("%d sidecars written for eight runs sharing one basename", sidecars)
+	}
+}
+
+func TestHarnessRefusesANonEmptyOutputDirectory(t *testing.T) {
+	out := t.TempDir()
+	if err := os.WriteFile(filepath.Join(out, "development-lock.json"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := realMain(harnessArgs("/bin/true", out), &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "not empty") {
+		t.Errorf("realMain(non-empty out) = %d, stderr %q", code, stderr.String())
+	}
+}
+
+func TestFlagNames(t *testing.T) {
+	want := []string{"golang-tools", "kubernetes", "go-starter", "proficiency"}
+	for index, repository := range report.CalibrationCorpus() {
+		if got := flagName(repository); got != want[index] {
+			t.Errorf("flagName(%s) = %q, want %q", repository.Name, got, want[index])
+		}
+	}
+}
+
+func TestExitStatusRecordsSignals(t *testing.T) {
+	ok := exec.CommandContext(t.Context(), "sh", "-c", "exit 3")
+	_ = ok.Run()
+	if got := exitStatus(ok.ProcessState); got != 3 {
+		t.Errorf("exitStatus(exit 3) = %d", got)
+	}
+	killed := exec.CommandContext(t.Context(), "sh", "-c", "kill -TERM $$")
+	_ = killed.Run()
+	if got := exitStatus(killed.ProcessState); got != 128+15 {
+		t.Errorf("exitStatus(SIGTERM) = %d, want 143", got)
+	}
+}
+
+// failedReports writes a failed calibration report for every corpus commit,
+// so a fake tacita can print the one its --revision names.
+func failedReports(t *testing.T, dir string) {
+	t.Helper()
+
+	for _, repository := range report.CalibrationCorpus() {
+		encoded, err := report.Encode(report.Report{
+			Schema: report.ReportSchema,
+			Kind:   "calibration",
+			Status: "failed",
+			Tool: report.Tool{
+				TacitaVersion: "test", TacitaBinarySHA256: strings.Repeat("a", 64), GitVersion: report.FrozenGitVersion,
+			},
+			Repository: report.Repository{
+				ObjectFormat: "sha1", RootCommit: strings.Repeat("1", 40), ResolvedCommit: repository.Commit,
+				ReachableCommits: 2, FirstParentEvents: 2, SingleParentEvents: 1,
+			},
+			Failure: &report.Failure{Code: "budget_unique_pairs", Operation: "calibration"},
+		})
+		if err != nil {
+			t.Fatalf("Encode() error = %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, repository.Commit+".json"), encoded, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// fakeTacita writes a script that answers `calibrate --revision <commit>
+// <path>` with the prepared report for that commit, or exits 1 without one.
+func fakeTacita(t *testing.T, dir string, body string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, "tacita")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func harnessArgs(tacita string, out string) []string {
+	return []string{
+		"--tacita", tacita, "--runner", "test runner", "--out", out,
+		"--golang-tools", "/corpus/tools.git", "--kubernetes", "/corpus/kubernetes.git",
+		"--go-starter", "/corpus/go-starter.git", "--proficiency", "/corpus/proficiency.git",
+	}
+}
+
+func TestHarnessRecordsFailedRuns(t *testing.T) {
+	dir := t.TempDir()
+	failedReports(t, dir)
+	tacita := fakeTacita(t, dir, `cat "`+dir+`/$3.json"; echo diagnostic >&2`)
+	out := filepath.Join(dir, "out")
+
+	var stdout, stderr bytes.Buffer
+	code := realMain(harnessArgs(tacita, out), &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("realMain() = %d, stderr %q", code, stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(out, "evidence.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := report.DecodeEvidenceIndex(data)
+	if err != nil {
+		t.Fatalf("DecodeEvidenceIndex() error = %v", err)
+	}
+	if len(index.Artifacts) != 16 || index.Lanes[0].Outcome != "fail" || index.ExperimentOutcome != "fail" {
+		t.Errorf("index = %d artifacts, lanes %+v, experiment %s", len(index.Artifacts), index.Lanes, index.ExperimentOutcome)
+	}
+	sidecar, err := os.ReadFile(filepath.Join(out, "golang-tools.2.operation.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := report.DecodeOperation(sidecar)
+	if err != nil || operation.ProcessExitStatus != 0 || operation.ReportDigest == nil || operation.PeakResidentBytes <= 0 ||
+		operation.DiagnosticPaths == nil || (*operation.DiagnosticPaths)[0] != "golang-tools.2.stderr.txt" {
+		t.Errorf("sidecar = %+v, %v", operation, err)
+	}
+	if diagnostic, err := os.ReadFile(filepath.Join(out, "kubernetes.1.stderr.txt")); err != nil || string(diagnostic) != "diagnostic\n" {
+		t.Errorf("stderr file = %q, %v", diagnostic, err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "selection.txt")); err != nil {
+		t.Errorf("selection summary not written: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "experiment fail") {
+		t.Errorf("summary = %q", stdout.String())
+	}
+}
+
+func TestHarnessRecordsRunsWithoutReports(t *testing.T) {
+	dir := t.TempDir()
+	tacita := fakeTacita(t, dir, "echo refused >&2; exit 1")
+	out := filepath.Join(dir, "out")
+
+	var stdout, stderr bytes.Buffer
+	if code := realMain(harnessArgs(tacita, out), &stdout, &stderr); code != 0 {
+		t.Fatalf("realMain() = %d, stderr %q", code, stderr.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(out, "evidence.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := report.DecodeEvidenceIndex(data)
+	if err != nil {
+		t.Fatalf("DecodeEvidenceIndex() error = %v", err)
+	}
+	if len(index.Artifacts) != 8 || *index.Lanes[0].Reason != report.LaneReportNotComplete {
+		t.Errorf("index = %d artifacts, lane %+v", len(index.Artifacts), index.Lanes[0])
+	}
+	if _, err := os.Stat(filepath.Join(out, "golang-tools.1.report.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a report was written for a run that produced none: %v", err)
+	}
+}
+
+func TestHarnessFailsWhenTacitaCannotStart(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+
+	var stdout, stderr bytes.Buffer
+	if code := realMain(harnessArgs(filepath.Join(t.TempDir(), "missing"), out), &stdout, &stderr); code != 1 {
+		t.Errorf("realMain(missing binary) = %d, want 1", code)
+	}
+}

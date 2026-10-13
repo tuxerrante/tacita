@@ -77,6 +77,14 @@ tacita select tools.json tools.repeat.json kubernetes.json \
   proficiency.json proficiency.repeat.json > lock.json
 ```
 
+Or run the whole calibration in the frozen reference environment, where
+`CORPUS` holds the four bare clones:
+
+```bash
+make reference-image
+make reference-run CORPUS=/path/to/corpus OUT=/path/to/out
+```
+
 ## 🤝 Contributing
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and

@@ -145,7 +145,67 @@ any holdout report. Moving that work changes only the operational milestone
 boundary; the frozen grid, selector, corpus, report, and holdout rules remain
 unchanged.
 
+## 🚦 Milestone 3 delivery sequence
+
+Build Milestone 3 as dependency-safe pull requests with one motivation each.
+Each one updates the document that owns its behavior, is tested on synthetic
+sequences and real temporary repositories, and records its cost measured on the
+development corpus. No step reads the configuration holdout:
+
+1. fold eligible transactions over the frozen expanding cutoffs: position each
+   transaction at its first-parent event index, snapshot one accumulation at
+   each cutoff boundary, and display the first 10 ranked candidates of every
+   grid configuration;
+2. evaluate displayed candidates on their fixed evaluation partitions: micro
+   and macro adherence, coverage, cutoff abstention, adjacent-cutoff Jaccard,
+   and Kendall tau-b diagnostics;
+3. compare every configuration with the frequent-consequent and unweighted
+   baselines, replay the same fold over the hash-shuffled event order, and run
+   the no-history control;
+4. decide each frozen engineering dimension as `pass`, `fail`, or
+   `inconclusive` with the frozen reasons, and combine them conjunctively per
+   configuration;
+5. encode the calibration subset of `tacita.report/v1` and `tacita.grid/v1`
+   canonically, with the report row and byte budgets;
+6. implement `development-selector-v1` and the `tacita.dev-lock/v1` writer
+   over two supplied development reports, including the lane failure when no
+   configuration is selectable;
+7. replace the disposable `backtest` shell with a calibration command over one
+   repository, enforcing the elapsed-time budget and writing the canonical
+   report, and a selection command over the two development reports;
+8. run calibration on the frozen development and control corpus twice in the
+   reference environment, apply the selector to the resulting development
+   reports to write the lock or record the lane failure, record the
+   operational sidecars, and record the development outcome in
+   [`docs/experiment.md`](docs/experiment.md).
+
+Holdout tooling, the review manifest, and the blinded review are built only if
+step 8 produces a lock. If no configuration is selectable, the frozen protocol
+fails the inferred lane without running Tacita on the configuration holdout,
+and Milestone 3 exits with that no-go result.
+
 ## 🔍 Design review records
+
+### Milestone 3 design review record
+
+A pre-implementation review against the frozen commits recorded these
+outcomes. Event counts come from `git rev-list` (Git 2.54.0) on full bare
+clones; retained sizes come from a throwaway first-parent replay of the same
+commits, not from Tacita, and are re-measured by Tacita in steps 1 and 8:
+
+| Question | Outcome |
+| --- | --- |
+| Where do cutoff boundaries fall? | Over all first-parent events, root included: `golang/tools` has 10,693 events and Kubernetes 58,699, so `b(60)` is 6,415 and 35,219. `go-starter` has 428 and Proficiency 46, below the inference floor. |
+| Can the fold retain transactions for the shuffled replay? | Yes, as component sets only, with component bytes detached from the path strings they were sliced from. Kubernetes retains 201,336 component entries totalling 5.9 MB of component bytes; paths are not retained. |
+| Does the fold stop at `b(90)`? | No. It folds every eligible transaction, so pair-budget observations are those of the full history in both orderings, and the final aggregate is the partition `100` proposal when a backtest needs one. |
+| Which object ID keys the hash-shuffled order? | The frozen repository commit, the resolved tip in the corpus table, which is also what the development lock lists as each repository object ID. It is joined with each event's object ID as the protocol specifies. |
+| How do excluded events take part in the shuffled order? | Every event is ordered, root and excluded events included, so `b(p)` keeps its meaning; eligible transactions keep the position their event received. |
+| Is the unweighted baseline a second pipeline run? | No. It is the `unit` configuration with the same thresholds, already derived from the same fold. |
+
+These outcomes fix composition and resource use. They change no frozen metric,
+threshold, configuration, corpus ID, report field, resource budget, or Git or
+component semantics. Each one is recorded in the document that owns it by the
+pull request that implements it.
 
 ### Milestone 1 design review record
 
@@ -247,7 +307,8 @@ hash-shuffled control reuses that fold over its own event ordering.
 
 The development lock must exist before any holdout report is generated. Exit:
 a complete go/no-go result without holdout-informed configuration or threshold
-changes.
+changes. The Milestone 3 delivery sequence above builds the holdout path only
+after a lock exists.
 
 ### 4. Cold-start profile evaluation
 

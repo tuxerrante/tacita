@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 
 	"github.com/tuxerrante/tacita/internal/mining"
@@ -29,8 +30,11 @@ type Outcome struct {
 // order.
 //
 // The chronological model and the hash-shuffled control are the same call
-// over different orderings.
+// over different orderings. ctx is checked before each cutoff's displays and
+// before each configuration's evaluation, so a cancellation or deadline stops
+// the work within one cutoff's displays.
 func EvaluateOrdering(
+	ctx context.Context,
 	transactions []Transaction,
 	partitions []Partition,
 	configurations []mining.Configuration,
@@ -43,6 +47,9 @@ func EvaluateOrdering(
 	}
 
 	err := Fold(transactions, partitions, func(_ Partition, aggregate mining.Aggregate) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		displays, err := DisplayCandidates(aggregate, configurations)
 		if err != nil {
 			return err
@@ -65,6 +72,9 @@ func EvaluateOrdering(
 		return nil, err
 	}
 	for index := range outcomes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if outcomes[index].Model, err = Evaluate(windows, modelRules[index]); err != nil {
 			return nil, fmt.Errorf("evaluating %s: %w", configurations[index].ID(), err)
 		}

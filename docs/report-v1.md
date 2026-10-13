@@ -125,9 +125,11 @@ The budget IDs, units, and limits are:
 | `report_rows` | rows | 100,000 |
 
 `elapsed_time`, `peak_resident_memory`, and `operational_sidecar_bytes` are
-observed by the experiment harness, and `report_bytes` cannot hold the size of
-the report that contains it, so these four records set `observed` and
-`outcome` to `null`. The encoder still enforces the report byte budget.
+observed by the experiment harness, `git_stdout` and `git_stderr` are enforced
+by stopping the Git child at the limit rather than counted, and `report_bytes`
+cannot hold the size of the report that contains it, so these six records set
+`observed` and `outcome` to `null`. A breach of any of them fails the run with
+its failure code, and the encoder still enforces the report byte budget.
 Every other record's `observed` is non-negative and its `outcome` is `pass`
 exactly when `observed` is at most `limit`.
 

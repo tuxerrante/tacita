@@ -10,12 +10,25 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+
+	"github.com/tuxerrante/tacita/internal/report"
 )
 
 const (
-	rootUsage     = "usage: tacita <command> [flags]\n\ncommands:\n  backtest"
-	backtestUsage = "usage: tacita backtest [flags] <repository>"
+	rootUsage      = "usage: tacita <command> [flags]\n\ncommands:\n  calibrate\n  select"
+	calibrateUsage = "usage: tacita calibrate --revision <revision> <repository>"
+	selectUsage    = "usage: tacita select [--operational-failure <repository>]... " +
+		"<golang/tools report> <golang/tools repeat> <kubernetes report> <kubernetes repeat> " +
+		"<go-starter report> <go-starter repeat> <proficiency report> <proficiency repeat>"
+
+	// exitNoSelection reports a completed selection that wrote no lock because
+	// the development lane failed.
+	exitNoSelection = 3
 )
+
+// errNoSelection identifies a selection that wrote no lock. Its summary has
+// already been written to stdout.
+var errNoSelection = errors.New("no selectable configuration: the development lane fails")
 
 type usageError struct {
 	detail string
@@ -38,21 +51,28 @@ func realMain(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if err := run(ctx, args, stdout); err != nil {
-		if usageErr, ok := errors.AsType[*usageError](err); ok {
-			if _, writeErr := fmt.Fprintln(stderr, usageErr); writeErr != nil {
-				return 1
-			}
-			return 2
-		}
+	err := run(ctx, args, stdout)
+	if err == nil {
+		return 0
+	}
 
-		if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
-			return 1
-		}
+	if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
 		return 1
 	}
 
-	return 0
+	return exitCode(err)
+}
+
+// exitCode maps a command failure to its process exit code: 2 for usage, 3
+// for a selection that wrote no lock, and 1 for every operational failure.
+func exitCode(err error) int {
+	if _, ok := errors.AsType[*usageError](err); ok {
+		return 2
+	}
+	if errors.Is(err, errNoSelection) {
+		return exitNoSelection
+	}
+	return 1
 }
 
 func run(ctx context.Context, args []string, stdout io.Writer) error {
@@ -62,61 +82,70 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		}
 		return nil
 	}
-	if len(args) == 0 || args[0] != "backtest" {
-		return &usageError{
-			detail: rootUsage,
-			cause:  flag.ErrHelp,
-		}
+	if len(args) == 0 {
+		return &usageError{detail: rootUsage, cause: flag.ErrHelp}
 	}
 
-	return runBacktest(ctx, args[1:], stdout)
+	switch args[0] {
+	case "calibrate":
+		return runCalibrate(ctx, args[1:], stdout)
+	case "select":
+		return runSelect(ctx, args[1:], stdout)
+	default:
+		return &usageError{detail: rootUsage, cause: flag.ErrHelp}
+	}
 }
 
-func runBacktest(ctx context.Context, args []string, stdout io.Writer) error {
-	// flag.FlagSet writes parse errors and help as a side effect.
-	// Capture them so run can classify the result and the
-	// CLI boundary remains the only place that prints an error.
-	var flagOutput bytes.Buffer
-
-	flags := flag.NewFlagSet("backtest", flag.ContinueOnError)
-	flags.SetOutput(&flagOutput)
+// newFlagSet captures help and parse output so the CLI boundary remains the
+// only place that prints an error.
+func newFlagSet(name string, usage string, output *bytes.Buffer) *flag.FlagSet {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.SetOutput(output)
 	flags.Usage = func() {
-		_, _ = fmt.Fprintln(&flagOutput, backtestUsage)
+		_, _ = fmt.Fprintln(output, usage)
 		flags.PrintDefaults()
 	}
+	return flags
+}
 
-	revision := flags.String("revision", "HEAD", "commit to analyze")
+// parseFlags parses args, copying help to stdout. It reports handled when
+// help was printed and the command should stop without error.
+func parseFlags(flags *flag.FlagSet, output *bytes.Buffer, args []string, stdout io.Writer) (bool, error) {
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			if _, copyErr := io.Copy(stdout, &flagOutput); copyErr != nil {
-				return fmt.Errorf("writing help: %w", copyErr)
+			if _, copyErr := io.Copy(stdout, output); copyErr != nil {
+				return true, fmt.Errorf("writing help: %w", copyErr)
 			}
-			return nil
+			return true, nil
 		}
-
-		return &usageError{
-			detail: strings.TrimSpace(flagOutput.String()),
-			cause:  err,
-		}
+		return true, &usageError{detail: strings.TrimSpace(output.String()), cause: err}
 	}
+	return false, nil
+}
 
-	if flags.NArg() != 1 {
+func runCalibrate(ctx context.Context, args []string, stdout io.Writer) error {
+	var flagOutput bytes.Buffer
+	flags := newFlagSet("calibrate", calibrateUsage, &flagOutput)
+	revision := flags.String("revision", "", "frozen corpus commit to calibrate")
+	if handled, err := parseFlags(flags, &flagOutput, args, stdout); handled {
+		return err
+	}
+	if flags.NArg() != 1 || *revision == "" {
 		return &usageError{
-			detail: backtestUsage,
-			cause:  errors.New("expected exactly one repository path"),
+			detail: calibrateUsage,
+			cause:  errors.New("expected --revision and exactly one repository path"),
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("starting backtest: %w", err)
+		return fmt.Errorf("starting calibration: %w", err)
 	}
 
-	if _, err := fmt.Fprintf(
-		stdout,
-		"repository=%s revision=%s\n",
-		flags.Arg(0),
-		*revision,
-	); err != nil {
-		return fmt.Errorf("writing output: %w", err)
+	encoded, err := calibrate(ctx, flags.Arg(0), *revision, report.CorpusRepositoryFor)
+	if err != nil {
+		return err
+	}
+	if _, err := stdout.Write(encoded); err != nil {
+		return fmt.Errorf("writing report: %w", err)
 	}
 
 	return nil

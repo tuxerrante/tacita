@@ -3,9 +3,10 @@
 ## Repository state
 
 Tacita is an experimental Go 1.27 CLI for turning repository-local conventions
-into explicit, human-ratified contracts. The checked-in executable is only a
-disposable `backtest` shell. It does not read Git history, mine candidates,
-evaluate profiles, ratify rules, or enforce policy.
+into explicit, human-ratified contracts. The checked-in executable calibrates
+the frozen development and control repositories and selects the development
+configuration. It refuses every other commit, including the configuration
+holdout, and it does not evaluate profiles, ratify rules, or enforce policy.
 
 Milestone 0 is complete, amended, and re-frozen. Implement only the active
 milestone under the frozen experiment contracts. Do not change corpus IDs,

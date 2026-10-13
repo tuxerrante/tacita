@@ -157,7 +157,7 @@ func evaluatedOrderings(t *testing.T, configurations []mining.Configuration) ([]
 	if err != nil {
 		t.Fatalf("Partitions() error = %v", err)
 	}
-	chronological, err := EvaluateOrdering(transactions, partitions, configurations)
+	chronological, err := EvaluateOrdering(t.Context(), transactions, partitions, configurations)
 	if err != nil {
 		t.Fatalf("EvaluateOrdering(chronological) error = %v", err)
 	}
@@ -166,7 +166,7 @@ func evaluatedOrderings(t *testing.T, configurations []mining.Configuration) ([]
 		transaction.Position = eventCount + 2 - transaction.Position
 		reversed[len(transactions)-1-index] = transaction
 	}
-	shuffled, err := EvaluateOrdering(reversed, partitions, configurations)
+	shuffled, err := EvaluateOrdering(t.Context(), reversed, partitions, configurations)
 	if err != nil {
 		t.Fatalf("EvaluateOrdering(reordered) error = %v", err)
 	}

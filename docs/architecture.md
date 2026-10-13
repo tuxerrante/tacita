@@ -21,21 +21,47 @@ resource, report, security, and testing contracts. See the
 
 ## Current CLI
 
-The implemented call path is:
+The implemented call paths are:
 
 ```text
-main -> realMain -> run -> runBacktest
+main -> realMain -> run -> runCalibrate -> calibrate
+main -> realMain -> run -> runSelect -> report.Select
 ```
 
 - `main` only passes process arguments and streams to `realMain`, then calls
   `os.Exit`.
-- `realMain` owns signal cancellation, error rendering, and exit-code mapping.
-- `run` and `runBacktest` accept injected `io.Writer` values and return errors.
-- a dedicated `flag.FlagSet` captures help and parse output so the CLI boundary
-  controls where each message is written;
+- `realMain` owns signal cancellation, error rendering, and exit-code mapping:
+  `0` for success, `1` for an operational failure, `2` for usage, and `3` for a
+  selection that wrote no lock because the development lane fails.
+- `run`, `runCalibrate`, and `runSelect` accept injected `io.Writer` values and
+  return errors.
+- a dedicated `flag.FlagSet` per command captures help and parse output so the
+  CLI boundary controls where each message is written;
 - `usageError` preserves its cause for `errors.Is` and `errors.As`.
 
-The `backtest` shell is scaffolding, not a stable public command contract.
+`tacita calibrate --revision <revision> <repository>` writes one canonical
+calibration report to stdout. It resolves the revision and refuses any commit
+outside the frozen development and control corpus, so the configuration
+holdout cannot be calibrated. It counts reachable commits and reads the
+first-parent chain first, because a report names both, then runs ingestion,
+both orderings, and the controls under the 20-minute elapsed budget; the
+evaluation checks the deadline before every cutoff's displays and every
+configuration's evaluation. After the chain is known, a failure with a frozen
+failure code writes a `failed` report carrying it; an earlier failure, or one
+the frozen vocabulary does not name, writes no report and exits `1`. The
+command's own budget observations enforce the frozen pair-observation and
+distinct-pair budgets as transactions arrive, so its pair set cannot outgrow
+them before the miner sees the history. Budget observations count the run's own work. Git
+output budgets are enforced by stopping the child and are recorded unobserved.
+
+`tacita select` reads two runs' reports for each corpus repository, in corpus
+order, each within the report byte budget, and selects only on `linux/amd64`.
+`--operational-failure <repository>` records a repository whose run the harness
+reports as failed or over its elapsed-time or memory budget. It writes the canonical
+lock, or a sorted summary of lane failures and rejections and exits `3`.
+
+These commands are the experiment's calibration surface, not the product's
+command contract.
 
 The [product brief](product.md#product-loop) owns the future workflow,
 ratification semantics, and enforcement policy. If the experiment succeeds,

@@ -44,7 +44,7 @@ func calibrationInput(t *testing.T) CalibrationInput {
 		t.Fatalf("Partitions() error = %v", err)
 	}
 	configurations := mining.AllConfigurations()
-	chronological, err := backtest.EvaluateOrdering(transactions, partitions, configurations)
+	chronological, err := backtest.EvaluateOrdering(t.Context(), transactions, partitions, configurations)
 	if err != nil {
 		t.Fatalf("EvaluateOrdering() error = %v", err)
 	}
@@ -54,7 +54,7 @@ func calibrationInput(t *testing.T) CalibrationInput {
 	if err != nil {
 		t.Fatalf("ShuffledTransactions() error = %v", err)
 	}
-	shuffled, err := backtest.EvaluateOrdering(shuffledTransactions, partitions, configurations)
+	shuffled, err := backtest.EvaluateOrdering(t.Context(), shuffledTransactions, partitions, configurations)
 	if err != nil {
 		t.Fatalf("EvaluateOrdering(shuffled) error = %v", err)
 	}

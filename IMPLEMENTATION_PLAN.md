@@ -42,7 +42,10 @@ artifacts, not product policy.
 Implemented:
 
 - a Go 1.27 module with zero runtime dependencies;
-- a testable `tacita backtest` command shell;
+- `tacita calibrate`, which writes one frozen development or control
+  repository's canonical calibration report and refuses every other commit,
+  and `tacita select`, which writes the development lock or the lane failure
+  summary;
 - process-boundary exit codes and signal cancellation;
 - in-memory CLI tests;
 - supported Linux/amd64, Git 2.43+, and SHA-1 validation;
@@ -94,15 +97,16 @@ Implemented:
 
 Not implemented:
 
-- the calibration command and reference-environment harness;
+- the reference-environment run and the recorded development outcome;
 - profile evaluation;
 - text rendering;
 - proposal, ratification, manifests, or checking.
 
-The current CLI is disposable. Its shape may change when the first real command
-contract is frozen. The implemented Git boundary is likewise provisional and
-still under review; each review pass so far has found and fixed a defect,
-recorded in [`docs/architecture.md`](docs/architecture.md#repository-targeting).
+The current CLI is the experiment's calibration surface. Its shape may change
+when the first product command contract is frozen. The implemented Git boundary
+is likewise provisional and still under review; each review pass so far has
+found and fixed a defect, recorded in
+[`docs/architecture.md`](docs/architecture.md#repository-targeting).
 
 ## 📊 Frozen Milestone 0 decisions
 

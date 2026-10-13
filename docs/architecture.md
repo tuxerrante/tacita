@@ -621,6 +621,27 @@ every supplied grid configuration and keeps only the first 10 ranked
 candidates, with component bytes restored, because component IDs are local to
 one accumulation and cannot be compared across orderings.
 
+Evaluation indexes each fixed evaluation window once, mapping every component
+to the ascending window-local indices of the transactions containing it. A
+rule's opportunities are then the length of its antecedent's list and its
+adherences the intersection with its consequent's list, so all 81
+configurations are scored without rescanning a window. Every displayed slot is
+scored, while Jaccard and rank correlation compare identity sets, so a rule
+shown twice counts twice in adherence and once in stability.
+
+The frozen metrics leave three choices open. They are ratified here and are
+the behavior the implementation pins:
+
+1. micro and macro adherence report `below_inference_floor` when every cutoff
+   abstains, otherwise `no_candidates` when no cutoff displays a candidate,
+   otherwise `no_opportunities` when no displayed candidate has a future
+   opportunity;
+2. minimum stability is undefined, with the first undefined adjacent value's
+   reason, when any adjacent Jaccard value is undefined;
+3. rank correlation ranks a rule by its first displayed slot, so neither
+   ranking has ties and Kendall tau-b equals concordant minus discordant pairs
+   over all pairs.
+
 This strategy depends on the frozen no-decay decision. If a later experiment
 introduces temporal decay, retained weights change as the cutoff advances, the
 running-total fold is no longer valid, and this section must be revisited

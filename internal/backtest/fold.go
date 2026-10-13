@@ -34,13 +34,8 @@ func Fold(
 	previous := 0
 
 	for index, transaction := range transactions {
-		if transaction.Position <= previous || transaction.Position > limit {
-			return &TransactionOrderError{
-				Index:    index,
-				Position: transaction.Position,
-				Previous: previous,
-				Limit:    limit,
-			}
+		if err := checkPosition(index, transaction.Position, previous, limit); err != nil {
+			return err
 		}
 		previous = transaction.Position
 
@@ -59,6 +54,21 @@ func Fold(
 	for ; next < len(partitions); next++ {
 		if err := visit(partitions[next], accumulator.Snapshot()); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// checkPosition requires each position to follow its predecessor's and stay
+// within the ordering.
+func checkPosition(index int, position int, previous int, limit int) error {
+	if position <= previous || position > limit {
+		return &TransactionOrderError{
+			Index:    index,
+			Position: position,
+			Previous: previous,
+			Limit:    limit,
 		}
 	}
 

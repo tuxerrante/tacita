@@ -67,3 +67,13 @@ func DisplayCandidates(
 
 	return displays, nil
 }
+
+// Rules returns what this display shows, in rank order, for evaluation.
+func (d Display) Rules() CutoffRules {
+	rules := make([]Rule, len(d.Candidates))
+	for index, candidate := range d.Candidates {
+		rules[index] = Rule{Antecedent: candidate.Antecedent, Consequent: candidate.Consequent}
+	}
+
+	return CutoffRules{Abstained: d.Abstained, Rules: rules}
+}

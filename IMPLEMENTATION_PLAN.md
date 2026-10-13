@@ -68,13 +68,17 @@ Implemented:
   configurations supplied to it, with inference abstention below 100 eligible
   transactions, the fixed raw-support floor, and the frozen byte-level ranking
   tie-breakers;
+- the four frozen expanding cutoffs over the complete first-parent event
+  sequence, chain-order positioning of eligible transactions, one fold with a
+  detached training snapshot at each cutoff, and the first 10 ranked
+  candidates of every supplied grid configuration at each cutoff;
 - real-repository coverage for bare repositories, hostile revisions, unusual
   paths, ambient Git isolation, unsupported formats, and cancellation;
 - incremental and full repository quality gates.
 
 Not implemented:
 
-- baselines or temporal evaluation;
+- evaluation metrics, baselines, controls, or engineering gates;
 - profile evaluation;
 - report schema or rendering;
 - proposal, ratification, manifests, or checking.

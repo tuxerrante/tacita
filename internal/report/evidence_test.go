@@ -213,6 +213,12 @@ func TestEvidenceIndexRejectsALockItsGatesForbid(t *testing.T) {
 			})
 			f.AnalyticalGates = f.AnalyticalGates[:7]
 		},
+		"a nondeterministic report": func(f *EvidenceFields) {
+			at := slices.IndexFunc(f.Artifacts, func(a Artifact) bool {
+				return a.Kind == ArtifactAnalyticalReport && *a.Run == 2 && *a.RepositoryObjectID == Kubernetes().Commit
+			})
+			f.Artifacts[at].Digest = strings.Repeat("c", 64)
+		},
 	}
 	for name, mutate := range tests {
 		fields := valid.EvidenceFields

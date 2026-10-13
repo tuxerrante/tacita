@@ -496,9 +496,9 @@ The field names are `schema`, `experiment_id` (`tacita-experiment-1`),
 Sidecars cover every corpus repository's runs 1 and 2. Until a blinded review
 exists, the profile lane is `inconclusive` with `not_run`, and the inferred
 lane fails, with a lane failure reason, exactly when the index holds no lock.
-A lock is accepted only beside a report for every run and passing analytical,
-elapsed, and memory gates, the conditions under which the selector can write
-one.
+A lock is accepted only beside a report for every run, byte-identical reports
+for both runs of each repository, and passing analytical, elapsed, and memory
+gates, the conditions under which the selector can write one.
 
 The evidence-index digest is SHA-256 over the preceding canonical fields.
 The index is canonical for a recorded run, but two executions may have

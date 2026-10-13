@@ -308,10 +308,21 @@ var inferredFailureReasons = []string{
 }
 
 // gatesAllowLock reports whether the recorded gates allow a lock: a report for
-// every run, and every analytical, elapsed, and memory gate passing.
+// every run, byte-identical reports for both runs of each repository, and
+// every analytical, elapsed, and memory gate passing.
 func gatesAllowLock(fields EvidenceFields) bool {
 	if len(fields.AnalyticalGates) != len(fields.OperationalGates) {
 		return false
+	}
+	digests := make(map[string]string)
+	for _, artifact := range fields.Artifacts {
+		if artifact.Kind != ArtifactAnalyticalReport {
+			continue
+		}
+		if first, seen := digests[*artifact.RepositoryObjectID]; seen && first != artifact.Digest {
+			return false
+		}
+		digests[*artifact.RepositoryObjectID] = artifact.Digest
 	}
 	for _, gate := range fields.AnalyticalGates {
 		if gate.Outcome != outcomePass {

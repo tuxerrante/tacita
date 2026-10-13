@@ -96,7 +96,8 @@ no profile helper ran.
 
 Each `configurations` record contains `configuration_id`,
 `development_lock_digest`, `size_weight`, `minimum_opportunities`,
-`minimum_confidence`, and `minimum_lift`, in that order. Calibration reports
+`minimum_confidence`, and `minimum_lift`, in that order. The two minimum ratios
+are decimal strings. Calibration reports
 contain all 81 records in configuration-ID order; selected backtests contain
 one; profile-only reports contain an empty array.
 
@@ -104,18 +105,71 @@ Each budget record contains `id`, `unit`, `limit`, `observed`, and `outcome`.
 Runtime and memory budget records contain limits but set canonical `observed`
 and `outcome` to `null`; their observations live in the operational sidecar.
 
-Each exclusion record contains `scope`, `reason`, and `count`. Scope is `event`
-or `path`. Records are sorted by scope then reason.
+The budget IDs, units, and limits are:
+
+| ID | Unit | Limit |
+| --- | --- | ---: |
+| `distinct_components` | components | 50,000 |
+| `distinct_pairs` | pairs | 2,000,000 |
+| `distinct_paths` | paths | 2,000,000 |
+| `elapsed_time` | nanoseconds | 1,200,000,000,000 |
+| `event_components` | components | 100 |
+| `event_paths` | paths | 2,000 |
+| `first_parent_events` | events | 200,000 |
+| `git_stderr` | bytes | 1,048,576 |
+| `git_stdout` | bytes | 1,073,741,824 |
+| `operational_sidecar_bytes` | bytes | 1,048,576 |
+| `pair_observations` | pairs | 20,000,000 |
+| `peak_resident_memory` | bytes | 2,147,483,648 |
+| `report_bytes` | bytes | 67,108,864 |
+| `report_rows` | rows | 100,000 |
+
+`elapsed_time`, `peak_resident_memory`, and `operational_sidecar_bytes` are
+observed by the experiment harness, and `report_bytes` cannot hold the size of
+the report that contains it, so these four records set `observed` and
+`outcome` to `null`. The encoder still enforces the report byte budget.
+Every other record's `observed` is non-negative and its `outcome` is `pass`
+exactly when `observed` is at most `limit`.
+
+Each exclusion record contains `scope`, `reason`, and `count`. Only the frozen
+scope and reason pairs below are valid. Scope is `event`
+or `path`. Records are sorted by scope then reason. A report lists every event
+reason (`event_component_limit`, `event_path_limit`, `no_eligible_paths`,
+`root_event`) and path reason (`gitlink_path`, `vendor_path`), zero counts
+included, so its shape does not depend on which exclusions occurred.
 
 Partition records are ordered `60`, `70`, `80`, `90` and contain percentile,
 cutoff object ID, inclusive training event indices, inclusive evaluation event
 indices, eligible counts, displayed candidate count, and deterministic work
-counts. Indices are one-based.
+counts. Indices are one-based. The fields are `percentile`, `cutoff_commit`,
+`training_first_event`, `training_last_event`, `evaluation_first_event`,
+`evaluation_last_event`, `eligible_training_transactions`,
+`eligible_evaluation_transactions`, and `displayed_candidates`, in that order.
+The eligible counts are the deterministic work counts. `displayed_candidates`
+counts the candidate records at that partition across the report's
+configurations.
+Training starts at event 1 and holds at least one event, each evaluation
+range starts after its training range, consecutive partitions are contiguous,
+the `90` partition's evaluation range ends at the last first-parent event, and
+each eligible count fits its range.
+
+A `complete` calibration report holds all 81 frozen configurations, each
+record matching its frozen grid point, the `60`, `70`, `80`, and `90`
+partitions, one metric record per configuration in configuration order, every
+frozen budget record, all six exclusion records, the `no_history` baseline and
+one record of each other baseline per configuration, and exactly the frozen
+development gate set: `no_history_control` for the repository and every other
+gate for each configuration, `unweighted_gain` only for non-`unit` weights.
+Every candidate, baseline, and gate names a configuration the report holds,
+and every observed budget passes, because budget exhaustion produces a `failed`
+report instead.
 
 ### Candidate records
 
 Candidates are ordered by configuration ID, partition, rank, then candidate ID.
 A final full-history proposal uses partition `100`.
+Within one configuration and partition, ranks run from 1 without gaps and
+never exceed the display limit of 10.
 
 Each inferred candidate contains:
 
@@ -129,6 +183,15 @@ Each inferred candidate contains:
 
 Evidence contains event object ID, event kind, one-based integration index, and
 sorted path/status records. Canonical reports never contain blob contents.
+
+A candidate's evidence fields are `supporting_evidence` and
+`exception_evidence`, after the weighted decimals. Each holds `total_events`,
+the pre-sampling event count, and `events`. An evidence event holds
+`object_id`, `kind` (`root`, `single-parent`, or `merge-result`), `index`,
+`total_paths`, the pre-sampling path count, and `paths`, whose records hold
+`path` as a byte identity and `status` (`A`, `D`, `M`, or `T`), sorted by path
+bytes. A training partition's supporting events number its raw support, and
+its exception events number its raw opportunity minus its raw support.
 
 Each candidate retains at most 20 supporting and 20 exception events. When
 more exist, retain the 10 earliest and 10 latest by integration index, then
@@ -161,6 +224,26 @@ metric fields, and diagnostic outcome. Baseline and control outcomes do not
 enter the conjunctive engineering gate unless a frozen requirement names that
 specific baseline or control.
 
+`rank_correlation_diagnostics` holds one metric per adjacent cutoff pair, in
+cutoff order. Metric records are sorted by configuration ID.
+
+Baseline IDs are `frequent_consequent`, `hash_shuffled`, `no_history`, and
+`unweighted`. Each configuration has one of each but `no_history`, which is a
+single record with `null` configuration ID whose metrics report
+`below_inference_floor` and whose `outcome` is the control's `pass` or `fail`.
+A `unit` configuration's `unweighted` record reports `identical_baseline` for
+every metric. The other baselines set `outcome` to `null`: their comparisons
+are the gates that name them. Baselines are sorted by configuration ID, `null`
+first, then ID.
+
+Control IDs are `template_origin` and `young_repository`. A control record
+holds `configuration_id` (`null`), `id`, `inferred_candidates`,
+`root_event_excluded`, and `outcome`, sorted by ID. Development repository
+reports have no control records.
+
+Report v1 has no profile record yet, so any element of `profiles` is a
+decoding error until the profile lane defines one.
+
 A metric is:
 
 ```json
@@ -175,7 +258,9 @@ or:
 
 Gate records contain `configuration_id`, `id`, `outcome`, `metric`, `operator`,
 `threshold`, and `reason`, in that order. Profile-wide gates use `null`
-configuration ID. Outcomes are `pass`, `fail`, or `inconclusive`.
+configuration ID. Outcomes are `pass`, `fail`, or `inconclusive`. Operators are
+`>=` and `<=`, and `threshold` is a decimal string. Gates are sorted by ID,
+then configuration ID with `null` first.
 
 Stable development gate IDs are:
 
@@ -191,7 +276,14 @@ unweighted_gain
 ```
 
 Each names one frozen development engineering requirement decided on one
-repository. `no_history_control` is a repository gate with `null`
+repository. Its operator and threshold are fixed: `adjacent_jaccard` `>=` 0.50,
+`coverage` `>=` 0.05, `cutoff_display` and `evaluation_windows_covered` `>=` 1,
+`frequent_consequent_gain` `>=` 0.10, `shuffled_control_gain` `>=` 0.05,
+`unweighted_gain` `>=` 0, and `no_history_control` `<=` 0. A `pass` or `fail`
+gate holds a defined metric on the matching side of its threshold and a `null`
+reason, except that a metric rendering as the threshold's decimal string may
+carry either outcome, because the outcome was decided on the unrounded value; an `inconclusive` gate holds an undefined metric and repeats its
+reason. `no_history_control` is a repository gate with `null`
 configuration ID. `unweighted_gain` is omitted for a `unit` configuration,
 whose baseline is itself. A gate over both micro and macro adherence reports
 the smaller of the two differences as its metric.
@@ -285,6 +377,19 @@ raw support, ordered size weights, ordered opportunity thresholds, ordered
 confidence thresholds, ordered lift thresholds, display limit, ordered ranking
 keys, and grid digest. Values are exactly those frozen in the candidate
 configuration grid. The digest is SHA-256 over the preceding canonical fields.
+
+The fields are `schema`, `minimum_training_transactions`,
+`minimum_raw_support`, `size_weights`, `minimum_opportunities`,
+`minimum_confidence`, `minimum_lift`, `display_limit`, `ranking_keys`, and
+`grid_digest`. Size weights follow the frozen simplicity order; thresholds are
+ascending, ratios as decimal strings. The ranking keys are
+`weighted_confidence_descending`, `weighted_lift_descending`,
+`raw_support_descending`, `raw_opportunity_descending`,
+`antecedent_bytes_ascending`, and `consequent_bytes_ascending`.
+
+Every artifact digest over "the preceding canonical fields" hashes the
+canonical artifact bytes of an object holding exactly those fields in order:
+one minified object followed by one LF byte.
 
 ## `tacita.dev-lock/v1`
 

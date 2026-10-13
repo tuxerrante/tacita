@@ -16,7 +16,10 @@ Milestone 0 is complete: the first experiment contract is amended and
 re-frozen. Milestone 1 safe Git ingestion is implemented: the internal boundary
 validates the supported environment, resolves and traverses first-parent
 history, normalizes component transactions, and enforces its frozen event and
-identity budgets. See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the
+identity budgets. Milestone 2 descriptive mining is implemented: an internal
+boundary accumulates directional pair state from component transactions and
+derives ranked candidate metrics, supporting any of the 81 frozen grid
+configurations. See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the
 exact status. The current binary remains only a testable CLI shell; it does not
 analyze Git history or enforce policy. There are no releases yet.
 

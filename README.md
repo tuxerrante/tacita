@@ -21,9 +21,11 @@ boundary accumulates directional pair state from component transactions and
 derives ranked candidate metrics, supporting any of the 81 frozen grid
 configurations. See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the
 exact status. Milestone 3 temporal calibration is implemented: the binary
-calibrates the frozen development and control repositories and selects the
-development configuration, and it refuses every other commit. It does not
-enforce policy. There are no releases yet.
+calibrates the frozen development and control repositories and runs the
+development selector, which writes either a configuration lock or a
+lane-failure summary, and it refuses every other commit. On the frozen corpus
+no configuration is selectable, so there is no lock and the configuration
+holdout was not run. It does not enforce policy. There are no releases yet.
 
 ## 🧭 Start here
 

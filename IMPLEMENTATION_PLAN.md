@@ -1,9 +1,10 @@
 # Tacita Implementation Plan
 
-Status: Milestone 0 contract re-frozen; Milestone 1 ingestion and Milestone 2
-descriptive miner complete
+Status: Milestone 0 contract re-frozen; Milestones 1 to 3 complete; the
+development lane failed, so the inferred lane fails without holdout evaluation
 
-Active milestone: Milestone 3 — temporal calibration and backtest
+Active milestone: Milestone 5 — human product decision on the failed inferred
+lane; Milestone 4 has not started
 
 Product implementation: limited to the frozen evidence-first experiment
 
@@ -101,7 +102,6 @@ Implemented:
 
 Not implemented:
 
-- the recorded reference-run development outcome;
 - profile evaluation;
 - text rendering;
 - proposal, ratification, manifests, or checking.
@@ -173,38 +173,38 @@ any holdout report. Moving that work changes only the operational milestone
 boundary; the frozen grid, selector, corpus, report, and holdout rules remain
 unchanged.
 
-## 🚦 Milestone 3 delivery sequence
+## 🚦 Completed Milestone 3 delivery sequence
 
-Build Milestone 3 as dependency-safe pull requests with one motivation each.
+Milestone 3 was built as dependency-safe pull requests with one motivation each.
 Each one updates the document that owns its behavior, is tested on synthetic
 sequences and real temporary repositories, and records its cost measured on the
 development corpus. No step reads the configuration holdout:
 
-1. fold eligible transactions over the frozen expanding cutoffs: position each
-   transaction at its first-parent event index, snapshot one accumulation at
-   each cutoff boundary, and display the first 10 ranked candidates of every
-   grid configuration;
-2. evaluate displayed candidates on their fixed evaluation partitions: micro
-   and macro adherence, coverage, cutoff abstention, adjacent-cutoff Jaccard,
-   and Kendall tau-b diagnostics;
-3. compare every configuration with the frequent-consequent and unweighted
-   baselines, replay the same fold over the hash-shuffled event order, and run
-   the no-history control;
-4. decide each frozen engineering dimension as `pass`, `fail`, or
+1. completed: fold eligible transactions over the frozen expanding cutoffs:
+   position each transaction at its first-parent event index, snapshot one
+   accumulation at each cutoff boundary, and display the first 10 ranked
+   candidates of every grid configuration;
+2. completed: evaluate displayed candidates on their fixed evaluation
+   partitions: micro and macro adherence, coverage, cutoff abstention,
+   adjacent-cutoff Jaccard, and Kendall tau-b diagnostics;
+3. completed: compare every configuration with the frequent-consequent and
+   unweighted baselines, replay the same fold over the hash-shuffled event
+   order, and run the no-history control;
+4. completed: decide each frozen engineering dimension as `pass`, `fail`, or
    `inconclusive` with the frozen reasons, and combine them conjunctively per
    configuration;
-5. encode the calibration subset of `tacita.report/v1` and `tacita.grid/v1`
-   canonically, with the report row and byte budgets;
-6. implement `development-selector-v1` and the `tacita.dev-lock/v1` writer
-   over two supplied development reports, including the lane failure when no
-   configuration is selectable;
-7. replace the disposable `backtest` shell with a calibration command over one
-   repository, enforcing the elapsed-time budget and writing the canonical
-   report, and a selection command over the two development reports;
-8. run calibration on the frozen development and control corpus twice in the
-   reference environment, apply the selector to the resulting development
-   reports to write the lock or record the lane failure, record the
-   operational sidecars, and record the development outcome in
+5. completed: encode the calibration subset of `tacita.report/v1` and
+   `tacita.grid/v1` canonically, with the report row and byte budgets;
+6. completed: implement `development-selector-v1` and the `tacita.dev-lock/v1`
+   writer over two supplied development reports, including the lane failure when
+   no configuration is selectable;
+7. completed: replace the disposable `backtest` shell with a calibration command
+   over one repository, enforcing the elapsed-time budget and writing the
+   canonical report, and a selection command over the two development reports;
+8. completed: run calibration on the frozen development and control corpus twice
+   in the reference environment, apply the selector to the resulting development
+   reports to write the lock or record the lane failure, record the operational
+   sidecars, and record the development outcome in
    [`docs/experiment.md`](docs/experiment.md).
 
 Holdout tooling, the review manifest, and the blinded review are built only if
@@ -323,7 +323,7 @@ produce exact repeated full-history aggregates and ranked candidates for every
 supplied configuration, within bounded behavior, and neither reads the
 development or holdout corpus. Milestone 2 implementation is complete.
 
-### 3. Temporal calibration and backtest
+### 3. Temporal calibration and backtest — complete 2026-10-12
 
 Deliver the frozen rolling cutoffs, trivial baselines, negative and stress
 controls, canonical analytical reports, development calibration and
@@ -333,10 +333,11 @@ evidence bundle.
 The four cutoffs are snapshots of the same fold, not four runs. The
 hash-shuffled control reuses that fold over its own event ordering.
 
-The development lock must exist before any holdout report is generated. Exit:
-a complete go/no-go result without holdout-informed configuration or threshold
-changes. The Milestone 3 delivery sequence above builds the holdout path only
-after a lock exists.
+The development lock must exist before any holdout report is generated. Exit
+met on 2026-10-12 with a no-go: no configuration is selectable on the
+development corpus, so no lock exists and the holdout path was not built. The
+[recorded result](docs/experiment.md#-development-calibration-result) holds the
+evidence.
 
 ### 4. Cold-start profile evaluation
 
@@ -353,7 +354,9 @@ Choose one:
 1. plan proposal, ratification, and diff checking because both required lanes
    passed;
 2. preregister and rerun a revised failed lane;
-3. stop or split the product because the evidence does not support one coherent
+3. run the Milestone 4 profile lane first, to inform whether to revise, split,
+   or stop; profile evidence cannot make a failed inferred lane pass;
+4. stop or split the product because the evidence does not support one coherent
    workflow.
 
 Enforcement never starts automatically.

@@ -4,11 +4,15 @@
 
 Tacita is an experimental Go 1.27 CLI for turning repository-local conventions
 into explicit, human-ratified contracts. The checked-in executable calibrates
-the frozen development and control repositories and selects the development
-configuration. It refuses every other commit, including the configuration
-holdout, and it does not evaluate profiles, ratify rules, or enforce policy.
+the frozen development and control repositories and runs the development
+selector, which writes either a configuration lock or a lane-failure summary;
+on the frozen corpus it writes the summary and no lock. It refuses every other
+commit, including the configuration holdout, and it does not evaluate profiles,
+ratify rules, or enforce policy.
 
-Milestone 0 is complete, amended, and re-frozen. Implement only the active
+Milestone 0 is complete, amended, and re-frozen. Milestone 3 recorded a
+development no-go: the inferred lane fails and the configuration holdout was
+not run, so nothing may compute Kapparmor output. Implement only the active
 milestone under the frozen experiment contracts. Do not change corpus IDs,
 thresholds, report fields, platform guarantees, resource budgets, or
 Git/component semantics from development or holdout results.

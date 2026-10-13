@@ -261,6 +261,9 @@ Gate records contain `configuration_id`, `id`, `outcome`, `metric`, `operator`,
 configuration ID. Outcomes are `pass`, `fail`, or `inconclusive`. Operators are
 `>=` and `<=`, and `threshold` is a decimal string. Gates are sorted by ID,
 then configuration ID with `null` first.
+A `pass` or `fail` gate holds a defined metric on the matching side of its
+threshold and a `null` reason; an `inconclusive` gate holds an undefined metric
+and repeats its reason.
 
 Stable development gate IDs are:
 
@@ -406,6 +409,23 @@ The canonical development lock fields are:
 8. `development_reports`: ordered repository/report-digest pairs;
 9. `selector_metrics`: ordered metric/value pairs;
 10. `lock_digest`: SHA-256 of the preceding canonical fields.
+
+The field names are `schema`, `corpus`, `environment`, `grid_digest`,
+`selector`, `configuration_id`, `parameters`, `development_reports`,
+`selector_metrics`, and `lock_digest`. `corpus` lists the `golang/tools`,
+Kubernetes, `go-starter`, and Proficiency commits in corpus-table order; the
+configuration holdout is not part of it. `environment` holds `architecture`
+(`linux/amd64`), `git_version`, which must be the frozen reference version
+`2.55.0`, `tacita_binary_sha256`, and `go_helper_version`. `parameters` holds `size_weight`,
+`minimum_opportunities`, `minimum_confidence`, and `minimum_lift`.
+`development_reports` holds `repository_object_id` and `report_digest` for
+`golang/tools`, then Kubernetes, where the digest is the SHA-256 of the report's
+canonical bytes. `selector_metrics` holds `metric` and `value` records for
+`worst_case_frequent_consequent_gain`, `worst_case_coverage`, and
+`minimum_adjacent_jaccard`, in selector key order, as decimal strings.
+A lock is written and decoded only if its corpus, grid digest, selector,
+configuration, and parameters are the frozen values and its digest covers its
+fields.
 
 The holdout command requires the lock and verifies every embedded digest and
 repository object ID before reading holdout history.
